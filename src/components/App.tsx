@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { BOT_IDS } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { ingestStatusText } from "@/lib/ingest-feedback";
 import { ChatList } from "./ChatList";
@@ -89,9 +88,6 @@ export function App() {
       </div>
     );
   }
-
-  const prefBots =
-    profile.enabledBots.length > 0 ? profile.enabledBots : [...BOT_IDS];
 
   const statusText = ingestStatusText(lastIngestResult, ingesting);
 

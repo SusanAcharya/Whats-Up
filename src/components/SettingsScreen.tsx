@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BOTS, getBot } from "@/lib/bots";
 import {
-  defaultNotificationPrefs,
   normalizeNotificationPrefs,
   titleCaseName,
 } from "@/lib/notifications";
@@ -75,24 +74,57 @@ export function SettingsScreen({
   onSaveNotifications: (prefs: NotificationPrefs) => Promise<void>;
   onEnablePush: () => Promise<boolean>;
 }) {
+  if (!open) return null;
+  return (
+    <SettingsPanel
+      key={initialTab ?? "alerts"}
+      enabledBots={enabledBots}
+      initialPrefs={initialPrefs}
+      initialNotifications={initialNotifications}
+      pushEnabled={pushEnabled}
+      prefsSaving={prefsSaving}
+      notifySaving={notifySaving}
+      initialTab={initialTab}
+      onClose={onClose}
+      onSavePrefs={onSavePrefs}
+      onSaveNotifications={onSaveNotifications}
+      onEnablePush={onEnablePush}
+    />
+  );
+}
+
+function SettingsPanel({
+  enabledBots,
+  initialPrefs,
+  initialNotifications,
+  pushEnabled,
+  prefsSaving,
+  notifySaving,
+  initialTab,
+  onClose,
+  onSavePrefs,
+  onSaveNotifications,
+  onEnablePush,
+}: {
+  enabledBots: BotId[];
+  initialPrefs?: Preferences;
+  initialNotifications?: NotificationPrefs;
+  pushEnabled?: boolean;
+  prefsSaving?: boolean;
+  notifySaving?: boolean;
+  initialTab?: Tab;
+  onClose: () => void;
+  onSavePrefs: (prefs: Preferences) => Promise<void>;
+  onSaveNotifications: (prefs: NotificationPrefs) => Promise<void>;
+  onEnablePush: () => Promise<boolean>;
+}) {
   const { toggleBot, profile } = useStore();
   const [tab, setTab] = useState<Tab>(initialTab ?? "alerts");
   const [prefsDraft, setPrefsDraft] = useState<Preferences>(initialPrefs ?? defaultPreferences());
-  const [notifyDraft, setNotifyDraft] = useState<NotificationPrefs>(
-    initialNotifications ?? defaultNotificationPrefs(),
+  const [notifyDraft, setNotifyDraft] = useState<NotificationPrefs>(() =>
+    normalizeNotificationPrefs(initialNotifications),
   );
   const [pushBusy, setPushBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setTab(initialTab ?? "alerts");
-      setPrefsDraft(initialPrefs ?? defaultPreferences());
-      setNotifyDraft(normalizeNotificationPrefs(initialNotifications));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  if (!open) return null;
 
   const prefBots = enabledBots.length > 0 ? enabledBots : profile?.enabledBots ?? [];
 

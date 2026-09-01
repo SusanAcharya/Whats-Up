@@ -254,6 +254,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [lastIngestResult, setLastIngestResult] = useState<IngestResult | null>(null);
   const selectedRef = useRef<string | null>(null);
   const ingestingRef = useRef(false);
+  const skipNextOpenIngestRef = useRef(false);
   const lastNewsRef = useRef<Record<string, { title: string; text: string }>>({});
   const hydratedDmRef = useRef(new Set<string>());
   const localRef = useRef<LocalState | null>(null);
@@ -779,6 +780,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       prefs?: Preferences,
     ): Promise<IngestResult | null> => {
       if (ingestingRef.current) return null;
+      if (reason === "open") {
+        if (skipNextOpenIngestRef.current) {
+          skipNextOpenIngestRef.current = false;
+          return null;
+        }
+        const last = profile?.lastIngestAt;
+        if (last && Date.now() - last < 2 * 60 * 1000) return null;
+      }
       const enabled = bots ?? profile?.enabledBots ?? [];
       if (enabled.length === 0) return null;
       ingestingRef.current = true;
@@ -935,6 +944,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
       const result = await ingest("manual", unique, nextPrefs);
       if (result) setLastIngestResult(result);
+      skipNextOpenIngestRef.current = true;
+      const firstPosted = result?.postedBotIds[0];
+      const openChat = firstPosted
+        ? dmChatId(firstPosted)
+        : unique[0]
+          ? dmChatId(unique[0])
+          : GROUP_CHAT_ID;
+      setSelectedChatId(openChat);
       return result;
     },
     [addMessage, ensureDm, ingest, profile, saveProfile],

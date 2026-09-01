@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { getBot } from "@/lib/bots";
 import { titleCaseName } from "@/lib/notifications";
 import {
   BOT_PREF_CONFIG,
-  defaultPreferences,
   prunePref,
   sectionVisible,
 } from "@/lib/preferences";
 import type { BotId, BotPref, Preferences } from "@/lib/types";
 import { BotMark } from "./BotMark";
-import { IconClose } from "./icons";
 
 function Chip({
   on,
@@ -223,80 +221,6 @@ export function PreferencesEditor({
           </section>
         );
       })}
-    </div>
-  );
-}
-
-export function PreferencesScreen({
-  open,
-  botIds,
-  initial,
-  saving,
-  onClose,
-  onSave,
-}: {
-  open: boolean;
-  botIds: BotId[];
-  initial?: Preferences;
-  saving?: boolean;
-  onClose: () => void;
-  onSave: (prefs: Preferences) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState<Preferences>(initial ?? defaultPreferences());
-
-  useEffect(() => {
-    if (open) setDraft(initial ?? defaultPreferences());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-black">
-      <header
-        className="shrink-0 border-b border-white/8 px-4 pb-3 md:px-5 md:pb-4"
-        style={{ paddingTop: "calc(var(--safe-top) + 12px)" }}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="display text-[11px] font-black italic text-rose-300 md:text-[12px]">
-              Filters
-            </p>
-            <h2 className="display mt-0.5 text-[24px] font-black leading-none tracking-tight md:mt-1 md:text-[28px]">
-              Preferences
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/12 text-white active:bg-white/[0.08]"
-            aria-label="close"
-          >
-            <IconClose className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-2 no-scrollbar md:px-5">
-        <p className="pt-2 text-[14px] leading-6 text-[var(--muted)] md:pt-4">
-          Each desk only posts stories that match your keywords. Add a team, a ticker, a country — then save.
-        </p>
-        <PreferencesEditor value={draft} onChange={setDraft} botIds={botIds} />
-      </div>
-      <div
-        className="shrink-0 border-t border-white/8 bg-black/95 px-4 pt-3 backdrop-blur-xl md:px-5"
-        style={{ paddingBottom: "calc(var(--safe-bottom) + 14px)" }}
-      >
-        <button
-          type="button"
-          disabled={saving}
-          onClick={async () => {
-            await onSave(draft);
-          }}
-          className="h-12 w-full rounded-full bg-white text-[15px] font-semibold text-black disabled:opacity-40"
-        >
-          {saving ? "Saving…" : "Save preferences"}
-        </button>
-      </div>
     </div>
   );
 }

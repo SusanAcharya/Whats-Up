@@ -6,7 +6,7 @@ import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
-import { IconBack, IconRefresh, IconSend } from "./icons";
+import { IconBack, IconRefresh, IconSend, IconSettings } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
 
@@ -157,6 +157,14 @@ export function ChatThread({
                 : bot?.handle}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => onOpenSettings("filters")}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
+          aria-label="settings"
+        >
+          <IconSettings className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => ingest("manual")}

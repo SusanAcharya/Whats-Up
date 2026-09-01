@@ -128,7 +128,6 @@ export async function ingestForUser(uid: string, profile: UserProfile): Promise<
     );
     const items = await summarizeFlashes(stories);
     const posted: IngestItem[] = [];
-    let skippedDuplicate = 0;
 
     for (const item of items) {
       if (
@@ -136,7 +135,6 @@ export async function ingestForUser(uid: string, profile: UserProfile): Promise<
         isDuplicateTitle(item.title, [...seen.titles, ...posted.map((row) => row.title)])
       ) {
         await markSeen(uid, item.url, item.botId, item.title);
-        skippedDuplicate += 1;
         continue;
       }
       await ensureDm(uid, item.botId);
