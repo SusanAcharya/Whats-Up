@@ -154,7 +154,8 @@ service cloud.firestore {
           'createdAt',
           'lastIngestAt',
           'pushEnabled',
-          'preferences'
+          'preferences',
+          'notifications'
         ])
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
@@ -165,7 +166,18 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp
         && isValidOptionalTimestamp('lastIngestAt')
         && isValidOptionalBool('pushEnabled')
-        && isValidPreferences();
+        && isValidPreferences()
+        && isValidNotifications();
+    }
+
+    function isValidNotifications() {
+      return !('notifications' in request.resource.data)
+        || (
+          request.resource.data.notifications is map
+          && request.resource.data.notifications.keys().hasOnly(['timeline', 'bots'])
+          && request.resource.data.notifications.timeline is bool
+          && request.resource.data.notifications.bots is map
+        );
     }
 
     function isValidChat() {

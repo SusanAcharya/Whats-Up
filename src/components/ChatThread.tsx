@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { GROUP_CHAT_ID, getBot, hexAlpha } from "@/lib/bots";
+import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
@@ -16,10 +17,10 @@ function clock(ts: number) {
 function dayLabel(ts: number) {
   const date = new Date(ts);
   const today = new Date();
-  if (date.toDateString() === today.toDateString()) return "today";
+  if (date.toDateString() === today.toDateString()) return "Today";
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "yesterday";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
   return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
@@ -114,7 +115,7 @@ export function ChatThread({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-semibold leading-tight" style={{ color: accent }}>
-            {isGroup ? "the timeline" : bot?.name ?? chat?.title}
+            {isGroup ? "The timeline" : titleCaseName(bot?.name ?? chat?.title ?? "")}
           </p>
           <p className="truncate text-[11px] text-white/40">
             {ingesting
@@ -170,10 +171,10 @@ export function ChatThread({
             )}
             <p className="text-[15px] text-white/55">
               {isGroup
-                ? "quiet on purpose. we only text when it's actually huge."
+                ? "Quiet on purpose. We only text when it's actually huge."
                 : bot?.id === "pitch"
-                  ? "ask for a live score, the table, or who's kickoff next."
-                  : `ask ${bot?.name} anything about a story they dropped.`}
+                  ? "Ask for a live score, the table, or who's kickoff next."
+                  : `Ask ${titleCaseName(bot?.name ?? "them")} anything about a story they dropped.`}
             </p>
           </div>
         ) : null}
@@ -218,7 +219,7 @@ export function ChatThread({
             }
           }}
           rows={1}
-          placeholder={isGroup ? "Message the timeline" : `Message ${bot?.name ?? "them"}`}
+          placeholder={isGroup ? "Message the timeline" : `Message ${titleCaseName(bot?.name ?? "them")}`}
           className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
         />
         <button
@@ -288,7 +289,7 @@ function Row({
             <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               {isGroup ? (
                 <span className="text-[13px] font-semibold" style={{ color: author?.color }}>
-                  {author?.name}
+                  {titleCaseName(author?.name ?? "")}
                 </span>
               ) : null}
               {flash ? (
@@ -354,7 +355,7 @@ function Row({
         <div className={`max-w-[80%] ${mine ? "items-end" : "items-start"} flex flex-col`}>
           {!mine && isGroup && !withPrev ? (
             <p className="mb-1 text-[12px] font-medium" style={{ color: author?.color }}>
-              {author?.name}
+              {titleCaseName(author?.name ?? "")}
             </p>
           ) : null}
           <div

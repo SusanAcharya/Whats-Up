@@ -40,6 +40,13 @@ import {
   normalizePreferences,
   prunePreferences,
 } from "./preferences";
+import {
+  defaultNotificationPrefs,
+  normalizeNotificationPrefs,
+  shouldNotifyBot,
+  shouldNotifyTimeline,
+  titleCaseName,
+} from "./notifications";
 import { isFreshNews, newsCutoff } from "./retention";
 import type {
   BotId,
@@ -47,6 +54,7 @@ import type {
   ChatMessage,
   IngestItem,
   MessageKind,
+  NotificationPrefs,
   Preferences,
   UserProfile,
 } from "./types";
@@ -85,6 +93,7 @@ type StoreValue = {
   sendMessage: (text: string) => Promise<void>;
   enablePush: () => Promise<boolean>;
   savePreferences: (next: Preferences) => Promise<void>;
+  saveNotifications: (next: NotificationPrefs) => Promise<void>;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -107,17 +116,18 @@ function emptyLocal(): LocalState {
   return {
     uid,
     profile: {
-      displayName: "you",
+      displayName: "You",
       enabledBots: [],
       onboarded: false,
       createdAt: Date.now(),
       preferences: defaultPreferences(),
+      notifications: defaultNotificationPrefs(),
     },
     chats: [
       {
         id: GROUP_CHAT_ID,
         type: "group",
-        title: "the timeline",
+        title: "The timeline",
         lastMessage: "add members and the news starts texting you",
         lastMessageAt: Date.now(),
         unread: 0,
@@ -340,13 +350,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const data = snap.data();
             if (!data) return;
             setProfile({
-              displayName: data.displayName ?? "you",
+              displayName: data.displayName ?? "You",
               enabledBots: (data.enabledBots ?? []).filter(isBotId),
               onboarded: Boolean(data.onboarded),
               createdAt: millis(data.createdAt),
               lastIngestAt: data.lastIngestAt ? millis(data.lastIngestAt) : undefined,
               pushEnabled: Boolean(data.pushEnabled),
               preferences: normalizePreferences(data.preferences),
+              notifications: normalizeNotificationPrefs(data.notifications),
             });
           });
 
@@ -643,6 +654,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (next.lastIngestAt) payload.lastIngestAt = serverTimestamp();
       if (typeof next.pushEnabled === "boolean") payload.pushEnabled = next.pushEnabled;
       if (next.preferences) payload.preferences = next.preferences;
+      if (next.notifications) payload.notifications = next.notifications;
 
       if (!snap.exists()) {
         await setDoc(userRef, { ...payload, createdAt: serverTimestamp() });
@@ -818,25 +830,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         if (posted.length > 0 && profile?.pushEnabled && pushSubRef.current) {
           const sub = pushSubRef.current;
-          if (posted.length === 1) {
-            const item = posted[0];
+          const notify = normalizeNotificationPrefs(profile.notifications);
+          for (const item of posted) {
             const bot = getBot(item.botId);
-            void sendPushToSubscription(sub, {
-              title: bot?.name ?? "what's up",
-              body: item.groupText.slice(0, 160),
-            });
-          } else {
-            void sendPushToSubscription(sub, {
-              title: "what's up",
-              body: `${posted.length} new stories on the timeline`,
-            });
+            const body = item.groupText.slice(0, 160);
+            if (shouldNotifyBot(notify, item.botId)) {
+              void sendPushToSubscription(sub, {
+                title: titleCaseName(bot?.name ?? item.botId),
+                body,
+                url: `/?chat=${dmChatId(item.botId)}`,
+              });
+            } else if (shouldNotifyTimeline(notify)) {
+              void sendPushToSubscription(sub, {
+                title: "The timeline",
+                body: `${titleCaseName(bot?.name ?? item.botId)}: ${body}`,
+                url: `/?chat=${GROUP_CHAT_ID}`,
+              });
+            }
           }
         }
         await touchLastIngest();
         return posted.length;
       } catch (err) {
         console.error(err);
-        setError("couldn't grab the news. check your wifi and try again.");
+        setError("Couldn't grab the news. Check your wifi and try again.");
         return 0;
       } finally {
         ingestingRef.current = false;
@@ -856,20 +873,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await ensureDm(botId);
       }
       if (unique.length > 0) {
-        const names = unique.map((id) => getBot(id)?.name).filter(Boolean).join(", ");
+        const names = unique.map((id) => titleCaseName(getBot(id)?.name ?? id)).filter(Boolean).join(", ");
         await addMessage({
           chatId: GROUP_CHAT_ID,
           sender: unique[0],
-          text: `welcome to the timeline. ${names} just hopped in. we'll only ping you when it's actually huge.`,
+          text: `Welcome to the timeline. ${names} just hopped in. We'll only ping you when it's actually huge.`,
           kind: "system",
         });
       }
       await saveProfile({
-        displayName: profile?.displayName ?? "you",
+        displayName: profile?.displayName ?? "You",
         enabledBots: unique,
         onboarded: true,
         createdAt: profile?.createdAt ?? Date.now(),
         preferences: nextPrefs,
+        notifications: profile?.notifications ?? defaultNotificationPrefs(),
       });
       await ingest("open", unique, nextPrefs);
     },
@@ -886,6 +904,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [ingest, profile, saveProfile],
   );
 
+  const saveNotifications = useCallback(
+    async (next: NotificationPrefs) => {
+      if (!profile) return;
+      const notifications = normalizeNotificationPrefs(next);
+      await saveProfile({ ...profile, notifications });
+    },
+    [profile, saveProfile],
+  );
+
   const toggleBot = useCallback(
     async (botId: BotId, enabled: boolean) => {
       if (!profile) return;
@@ -898,14 +925,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await addMessage({
           chatId: GROUP_CHAT_ID,
           sender: botId,
-          text: `${bot?.name} hopped in. ${bot?.tagline}.`,
+          text: `${titleCaseName(bot?.name ?? botId)} hopped in. ${bot?.tagline}.`,
           kind: "system",
         });
       } else {
         await addMessage({
           chatId: GROUP_CHAT_ID,
           sender: botId,
-          text: `${bot?.name} left the chat. the lore will continue without them.`,
+          text: `${titleCaseName(bot?.name ?? botId)} left the chat. The lore will continue without them.`,
           kind: "system",
         });
       }
@@ -1068,6 +1095,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sendMessage,
       enablePush,
       savePreferences,
+      saveNotifications,
     };
     },
     [
@@ -1088,6 +1116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sendMessage,
       enablePush,
       savePreferences,
+      saveNotifications,
     ],
   );
 

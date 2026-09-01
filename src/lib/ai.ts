@@ -114,16 +114,21 @@ function fallbackText(story: FlashStory) {
   const sentences = excerpt.split(/(?<=[.!?])\s+/).filter((row) => row.length > 20);
   const summary = sentences.slice(0, 2).join(" ");
   if (summary.length >= 40 && !(tooLikeTitle(summary, story.title) && summary.length < story.title.length + 30)) {
-    return summary.charAt(0).toLowerCase() + summary.slice(1);
+    return sentenceCase(summary);
   }
   const title = story.title.replace(/\s+/g, " ").trim();
   const source = story.sources[0] || story.source || "the wires";
   const why = story.matchedKeywords.slice(0, 2).join(", ");
-  const lead = title.charAt(0).toLowerCase() + title.slice(1);
   if (excerpt.length >= 40 && !tooLikeTitle(excerpt, title)) {
-    return `${lead}. ${excerpt.slice(0, 220)}`.replace(/\s+/g, " ").trim();
+    return sentenceCase(`${title}. ${excerpt.slice(0, 220)}`.replace(/\s+/g, " ").trim());
   }
-  return `${lead}. ${source} has the latest${why ? ` — ${why}` : ""}.`;
+  return sentenceCase(`${title}. ${source} has the latest${why ? ` — ${why}` : ""}.`);
+}
+
+function sentenceCase(text: string) {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (!trimmed) return trimmed;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function tooLikeTitle(text: string, title: string) {
@@ -160,22 +165,22 @@ Each story already passed a relevancy + popularity gate. Write a REAL summary, n
 
 Rules:
 - 2 sentences. Sentence 1: what is happening, with the key fact/number/name. Sentence 2: why it matters or what happens next.
-- lowercase, casual, precise.
+- Proper sentence case (capitalize the first letter). Casual and precise — not formal newspaper voice.
 - Do not copy or lightly rewrite the TITLE.
 - Never invent facts. Use TITLE + EXCERPT. If the excerpt is thin, still write two sentences from the facts in the title — do not paste the headline.
 - keep:false only for rankings, schedules, listicles, or stories with no real development.
 
 Good:
-- rui hachimura is staying in la after the deadline talks collapsed. that leaves the lakers' wing rotation as-is heading into the last stretch.
-- traders now expect the fed to hold at 2pm. a cut this late would have been the surprise.
+- Rui Hachimura is staying in LA after the deadline talks collapsed. That leaves the Lakers' wing rotation as-is heading into the last stretch.
+- Traders now expect the Fed to hold at 2pm. A cut this late would have been the surprise.
 
 Bad:
 - restating the headline
-- "lakers expected to keep $48 million forward after failed trade attempts"
+- all-lowercase texting slang
 - "breaking:"
 
 Return JSON only:
-{"items":[{"index":0,"keep":true,"groupText":"rui hachimura is staying in la after the deadline talks collapsed. that leaves the lakers' wing rotation as-is heading into the last stretch."}]}`;
+{"items":[{"index":0,"keep":true,"groupText":"Rui Hachimura is staying in LA after the deadline talks collapsed. That leaves the Lakers' wing rotation as-is heading into the last stretch."}]}`;
 
   const user = stories
     .map(
@@ -185,7 +190,7 @@ Return JSON only:
     .join("\n\n");
 
   const toItem = (story: FlashStory, text: string, strict = true): IngestItem | null => {
-    const summary = cleanVoice(text);
+    const summary = sentenceCase(cleanVoice(text));
     if (!summary || summary.length < 24) return null;
     if (strict && tooLikeTitle(summary, story.title)) return null;
     return {
@@ -250,7 +255,7 @@ export async function botReply(input: {
   liveContext?: string;
 }): Promise<string> {
   const bot = getBot(input.botId);
-  if (!bot) return "wait who am i supposed to be rn";
+  if (!bot) return "Wait, who am I supposed to be right now?";
 
   const news =
     input.newsContext.length === 0
@@ -263,7 +268,7 @@ export async function botReply(input: {
   const live = input.liveContext?.trim();
   const system = `${bot.vibe}
 
-You're texting a friend in iMessage. lowercase, 2-4 short sentences, casual.
+You're texting a friend in iMessage. 2-4 short sentences, casual, proper sentence case (capitalize the first letter of each sentence).
 Don't use catchphrases. Don't say "no because" or "actually insane" or "yo this one actually matters".
 ${live ? "Answer from LIVE DATA first. Never invent a score or table position." : "Stay on the stories you were given. If you don't know, say so."}`;
 
@@ -282,6 +287,6 @@ ${live ? "Answer from LIVE DATA first. Never invent a score or table position." 
     return stripThink(reply).slice(0, 1200);
   } catch (error) {
     console.warn("chat fallback", error);
-    return "wifi in my brain just lagged. ask me again in a sec.";
+    return "Wifi in my brain just lagged. Ask me again in a sec.";
   }
 }

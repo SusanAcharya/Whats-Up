@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getBot } from "@/lib/bots";
+import { titleCaseName } from "@/lib/notifications";
 import {
   BOT_PREF_CONFIG,
   defaultPreferences,
@@ -126,7 +127,7 @@ export function PreferencesEditor({
                   className="display text-[16px] font-black tracking-tight md:text-[18px]"
                   style={{ color: bot?.color }}
                 >
-                  {bot?.name}
+                  {titleCaseName(bot?.name ?? config.botId)}
                 </h3>
                 <p className="mt-0.5 text-[12px] leading-snug text-[var(--muted)] md:text-[13px]">
                   {config.blurb}
@@ -259,10 +260,10 @@ export function PreferencesScreen({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="display text-[11px] font-black italic text-rose-300 md:text-[12px]">
-              filters
+              Filters
             </p>
             <h2 className="display mt-0.5 text-[24px] font-black leading-none tracking-tight md:mt-1 md:text-[28px]">
-              preferences
+              Preferences
             </h2>
           </div>
           <button
@@ -293,7 +294,7 @@ export function PreferencesScreen({
           }}
           className="h-12 w-full rounded-full bg-white text-[15px] font-semibold text-black disabled:opacity-40"
         >
-          {saving ? "saving..." : "save preferences"}
+          {saving ? "Saving…" : "Save preferences"}
         </button>
       </div>
     </div>

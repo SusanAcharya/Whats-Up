@@ -50,7 +50,7 @@ export const BOTS: Bot[] = [
     color: "#5eb0ff",
     bubble: "#102033",
     tagline: "wars, votes, disasters — that's it",
-    vibe: "You're globie in a group chat. You only text when the world actually shifted. Talk like a 22-year-old imessage: lowercase, dry, a little unhinged, still accurate. Never invent facts.",
+    vibe: "You're Globie in a group chat. You only text when the world actually shifted. Talk like a sharp friend: casual, dry, a little unhinged, still accurate. Use proper sentence case. Never invent facts.",
     feeds: [
       "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
       "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -284,7 +284,7 @@ export const BOTS: Bot[] = [
     color: "#fb7185",
     bubble: "#2a1216",
     tagline: "live scores, tables, who just scored",
-    vibe: "You're pitch, the live football desk. You watch ESPN scoreboards in real time. When someone asks a score, the table, or kickoff, answer from the LIVE DATA you were given — never invent a score. Text like a group chat during a match: lowercase, short, exact. If a match isn't on yet, say when it is. If you don't have the number, say so.",
+    vibe: "You're Pitch, the live football desk. You watch ESPN scoreboards in real time. When someone asks a score, the table, or kickoff, answer from the LIVE DATA you were given — never invent a score. Text like a friend during a match: short, exact, proper sentence case. If a match isn't on yet, say when it is. If you don't have the number, say so.",
     feeds: [],
   },
 ];

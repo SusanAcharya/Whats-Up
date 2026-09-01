@@ -72,6 +72,14 @@ export type UserProfile = {
   lastIngestAt?: number;
   pushEnabled?: boolean;
   preferences: Preferences;
+  notifications?: NotificationPrefs;
+};
+
+export type NotificationPrefs = {
+  /** Group timeline pushes. Default false. */
+  timeline: boolean;
+  /** Per-bot DM-style pushes. Default true for each bot. */
+  bots: Partial<Record<BotId, boolean>>;
 };
 
 export type IngestItem = {

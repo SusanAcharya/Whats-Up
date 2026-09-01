@@ -7,6 +7,7 @@ import type { BotId, Preferences } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { BotMark } from "./BotMark";
 import { PreferencesEditor } from "./Preferences";
+import { titleCaseName } from "@/lib/notifications";
 
 function OnboardingFooter({
   children,
@@ -54,24 +55,24 @@ export function Onboarding() {
       <div
         className="shrink-0 px-5 pt-[calc(var(--safe-top)+28px)]"
       >
-        <p className="display text-[14px] font-black italic text-rose-300">what&apos;s up</p>
+        <p className="display text-[14px] font-black italic text-rose-300">What&apos;s Up</p>
         {step === 1 ? (
           <>
             <h1 className="display mt-4 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[36px]">
-              only the news you&apos;d actually text about.
+              Only the news you&apos;d actually text about.
             </h1>
             <p className="mt-3 text-[15px] leading-6 text-[var(--muted)]">
-              pick desks. then tell each one the keywords to watch — a team, a ticker, a country.
-              only those flashes come through.
+              Pick desks. Then tell each one the keywords to watch — a team, a ticker, a country.
+              Only those flashes come through.
             </p>
           </>
         ) : (
           <>
             <h1 className="display mt-4 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[36px]">
-              tell them what to watch.
+              Tell them what to watch.
             </h1>
             <p className="mt-3 text-[15px] leading-6 text-[var(--muted)]">
-              sporty can be NBA, a league, a club. the others work the same way. save when it looks
+              Sporty can be NBA, a league, a club. The others work the same way. Save when it looks
               right.
             </p>
           </>
@@ -101,7 +102,7 @@ export function Onboarding() {
                         className="display block text-[16px] font-black tracking-tight"
                         style={{ color: on ? bot.color : "#fff7ed" }}
                       >
-                        {bot.name}
+                        {titleCaseName(bot.name)}
                       </span>
                       <span className="mt-0.5 block text-[13px] leading-snug text-[var(--muted)]">
                         {bot.topic} · {bot.tagline}
@@ -130,7 +131,7 @@ export function Onboarding() {
               disabled={picked.length === 0}
               className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-30"
             >
-              next · set filters
+              next · Set filters
               {picked.length > 0 ? ` (${picked.length})` : ""}
             </button>
           </OnboardingFooter>
@@ -149,14 +150,14 @@ export function Onboarding() {
                 disabled={picked.length === 0 || busy}
                 className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-40"
               >
-                {busy ? "catching you up..." : "save preferences"}
+                {busy ? "Catching you up…" : "Save preferences"}
               </button>
               <button
                 type="button"
                 onClick={() => setStep(1)}
                 className="h-10 w-full text-sm text-[var(--muted)]"
               >
-                back
+                Back
               </button>
             </div>
           </OnboardingFooter>

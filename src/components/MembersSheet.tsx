@@ -1,6 +1,7 @@
 "use client";
 
 import { BOTS, getBot } from "@/lib/bots";
+import { titleCaseName } from "@/lib/notifications";
 import type { BotId } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { BotMark } from "./BotMark";
@@ -26,9 +27,9 @@ export function MembersSheet({
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
           <div className="mb-3 flex items-end justify-between">
             <div>
-              <p className="display text-[11px] font-black italic text-rose-300">members</p>
+              <p className="display text-[11px] font-black italic text-rose-300">Members</p>
               <h2 className="display text-[22px] font-black leading-none tracking-tight md:text-2xl">
-                who&apos;s in the chat
+                Who&apos;s in the chat
               </h2>
             </div>
             <button
@@ -36,7 +37,7 @@ export function MembersSheet({
               onClick={onClose}
               className="h-10 px-2 text-sm text-white active:opacity-70"
             >
-              done
+              Done
             </button>
           </div>
         </div>
@@ -59,7 +60,7 @@ export function MembersSheet({
                       className="display font-black tracking-tight"
                       style={{ color: on ? bot.color : "#fff7ed" }}
                     >
-                      {bot.name}
+                      {titleCaseName(bot.name)}
                     </p>
                     <p className="text-[12px] leading-snug text-[var(--muted)] md:text-sm">
                       {bot.topic} · {bot.tagline}
@@ -70,7 +71,7 @@ export function MembersSheet({
                     onClick={() => toggleBot(bot.id as BotId, !on)}
                     className="h-8 w-12 shrink-0 rounded-full p-0.5"
                     style={{ background: on ? bot.color : "#2a2a2a" }}
-                    aria-label={`${on ? "remove" : "add"} ${bot.name}`}
+                    aria-label={`${on ? "Remove" : "Add"} ${bot.name}`}
                   >
                     <span
                       className="block h-7 w-7 rounded-full transition"
@@ -86,7 +87,9 @@ export function MembersSheet({
           </div>
         </div>
         <p className="shrink-0 px-4 pt-2 text-center text-[11px] text-[var(--muted)]">
-          {profile?.enabledBots.map((id) => getBot(id)?.name).join(", ") || "nobody yet"} · headlines only
+          {profile?.enabledBots.map((id) => titleCaseName(getBot(id)?.name ?? id)).join(", ") ||
+            "Nobody yet"}{" "}
+          · headlines only
         </p>
       </div>
     </div>

@@ -1,6 +1,6 @@
 self.addEventListener("push", function (event) {
   if (!event.data) return;
-  let data = { title: "What's Up", body: "something just dropped", url: "/" };
+  let data = { title: "What's Up", body: "Something just dropped", url: "/" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {
