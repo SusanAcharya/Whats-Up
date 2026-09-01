@@ -85,7 +85,8 @@ export function ChatList({
   statusText?: string | null;
   onDismissStatus?: () => void;
 }) {
-  const { chats, ingesting, ingest, selectChat, selectedChatId, profile, backend } = useStore();
+  const { chats, ingesting, ingest, selectChat, selectedChatId, profile, backend, markAllRead } =
+    useStore();
   const members = profile?.enabledBots.length ?? 0;
 
   const visible = chats.filter((chat) => {
@@ -105,6 +106,15 @@ export function ChatList({
           {members} {members === 1 ? "bot" : "bots"}
           {unreadTotal > 0 ? ` · ${unreadTotal} unread` : ""}
         </MetaLabel>
+        {unreadTotal > 0 ? (
+          <button
+            type="button"
+            onClick={() => void markAllRead()}
+            className="mt-1 text-[13px] font-medium text-[#0a84ff] active:opacity-70"
+          >
+            Mark all read
+          </button>
+        ) : null}
 
         <div className="mt-4 flex gap-2">
           <button

@@ -86,6 +86,8 @@ type StoreValue = {
   error: string | null;
   lastIngestResult: IngestResult | null;
   selectChat: (id: string | null) => void;
+  markAllRead: () => Promise<void>;
+  messagesLoading: boolean;
   completeOnboarding: (
     bots: BotId[],
     preferences?: Preferences,
@@ -256,6 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [lastIngestResult, setLastIngestResult] = useState<IngestResult | null>(null);
   const [composerSeed, setComposerSeed] = useState<{ chatId: string; text: string } | null>(null);
+  const [hydratedChats, setHydratedChats] = useState<Set<string>>(() => new Set());
   const selectedRef = useRef<string | null>(null);
   const ingestingRef = useRef(false);
   const skipNextOpenIngestRef = useRef(false);
@@ -301,6 +304,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       [...pruned.chats].sort((a, b) => b.lastMessageAt - a.lastMessageAt),
     );
     setMessageMap(pruned.messages);
+    setHydratedChats((prev) => {
+      const next = new Set(prev);
+      for (const key of Object.keys(pruned.messages)) next.add(key);
+      return next;
+    });
   }, []);
 
   const ensureFirebaseUser = useCallback(async (user: User) => {
@@ -440,6 +448,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           }
           setMessageMap((current) => ({ ...current, [chatId]: rows }));
+          setHydratedChats((prev) => new Set(prev).add(chatId));
         },
       );
     const unsubGroup = listen(GROUP_CHAT_ID);
@@ -474,6 +483,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [backend, persistLocal, uid],
   );
+
+  const markAllRead = useCallback(async () => {
+    if (!uid) return;
+    const unreadChats = chats.filter((chat) => chat.unread > 0);
+    if (unreadChats.length === 0) return;
+    if (backend === "local") {
+      const local = localRef.current ?? readLocal();
+      persistLocal({
+        ...local,
+        chats: local.chats.map((chat) => ({ ...chat, unread: 0 })),
+      });
+      return;
+    }
+    if (!db) return;
+    const batch = writeBatch(db);
+    for (const chat of unreadChats) {
+      batch.update(doc(db, "users", uid, "chats", chat.id), { unread: 0 });
+    }
+    await batch.commit();
+  }, [backend, chats, persistLocal, uid]);
 
   const addMessage = useCallback(
     async (input: {
@@ -1184,6 +1213,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       error,
       lastIngestResult,
       selectChat,
+      markAllRead,
+      messagesLoading: Boolean(selectedChatId && !hydratedChats.has(selectedChatId)),
       completeOnboarding,
       toggleBot,
       ingest,
@@ -1210,7 +1241,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       error,
       lastIngestResult,
       composerSeed,
+      hydratedChats,
       selectChat,
+      markAllRead,
       completeOnboarding,
       toggleBot,
       ingest,

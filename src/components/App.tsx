@@ -9,7 +9,8 @@ import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";
 import { Onboarding } from "./Onboarding";
 import { SettingsScreen } from "./SettingsScreen";
-import { SlideFromRight, springSoft } from "./motion";
+import { SlideFromRight } from "./motion";
+import { AppLoadingSkeleton } from "./ui";
 
 function isIos() {
   if (typeof navigator === "undefined") return false;
@@ -32,25 +33,20 @@ function useShowIosInstall() {
   );
 }
 
-function LoadingShell() {
-  return (
-    <motion.div
-      className="app-shell screen-canvas grid place-items-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={springSoft}
-    >
-      <motion.div
-        className="flex flex-col items-center gap-4"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springSoft, delay: 0.05 }}
-      >
-        <BotMark id="group" size="lg" />
-        <p className="text-[15px] text-[var(--ink-muted)]">Opening your chats…</p>
-      </motion.div>
-    </motion.div>
-  );
+const PENDING_CHAT_KEY = "pendingChat";
+
+function readPendingChat() {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("chat") || sessionStorage.getItem(PENDING_CHAT_KEY);
+}
+
+function stashPendingChat(chat: string) {
+  sessionStorage.setItem(PENDING_CHAT_KEY, chat);
+}
+
+function clearPendingChat() {
+  sessionStorage.removeItem(PENDING_CHAT_KEY);
 }
 
 export function App() {
@@ -74,19 +70,45 @@ export function App() {
   const [installDismissed, setInstallDismissed] = useState(false);
   const showInstall = useShowIosInstall() && !installDismissed;
   const ingestRef = useRef(ingest);
+  const selectChatRef = useRef(selectChat);
 
   useEffect(() => {
     ingestRef.current = ingest;
   }, [ingest]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const chat = new URLSearchParams(window.location.search).get("chat");
-    if (chat) {
-      void selectChat(chat);
-      window.history.replaceState({}, "", "/");
-    }
+    selectChatRef.current = selectChat;
   }, [selectChat]);
+
+  useEffect(() => {
+    const pending = readPendingChat();
+    if (pending) stashPendingChat(pending);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !profile?.onboarded) return;
+
+    const openPending = () => {
+      const pending = readPendingChat();
+      if (!pending) return;
+      clearPendingChat();
+      void selectChatRef.current(pending);
+      window.history.replaceState({}, "", "/");
+    };
+
+    openPending();
+
+    const onNavigate = (event: Event) => {
+      const chat = (event as CustomEvent<{ chat: string }>).detail?.chat;
+      if (!chat) return;
+      clearPendingChat();
+      void selectChatRef.current(chat);
+      window.history.replaceState({}, "", "/");
+    };
+
+    window.addEventListener("whatsup-navigate", onNavigate);
+    return () => window.removeEventListener("whatsup-navigate", onNavigate);
+  }, [ready, profile?.onboarded]);
 
   useEffect(() => {
     if (!ready || !profile?.onboarded) return;
@@ -98,7 +120,7 @@ export function App() {
   }, [profile?.onboarded, ready]);
 
   if (!ready || !profile) {
-    return <LoadingShell />;
+    return <AppLoadingSkeleton />;
   }
 
   if (!profile.onboarded) {

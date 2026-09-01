@@ -9,6 +9,7 @@ import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
+import { MessageListSkeleton } from "./ui";
 import { IconBack, IconRefresh, IconSend, IconSettings } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
@@ -119,6 +120,7 @@ export function ChatThread({
     askBot,
     composerSeed,
     clearComposerSeed,
+    messagesLoading,
   } = useStore();
   const scroller = useRef<HTMLDivElement>(null);
   const chat = chats.find((item) => item.id === selectedChatId);
@@ -181,7 +183,13 @@ export function ChatThread({
       >
         <PullHint pull={pull} ingesting={ingesting} />
 
-        {messages.length === 0 ? (
+        {messagesLoading ? (
+          <div className="pointer-events-none py-2 opacity-90">
+            <MessageListSkeleton />
+          </div>
+        ) : null}
+
+        {!messagesLoading && messages.length === 0 ? (
           <EmptyState
             isGroup={isGroup}
             bot={bot}
@@ -192,20 +200,22 @@ export function ChatThread({
           />
         ) : null}
 
-        {messages.map((message, index) => (
-          <Row
-            key={message.id}
-            index={index}
-            message={message}
-            prev={messages[index - 1]}
-            next={messages[index + 1]}
-            isGroup={isGroup}
-            onAskBot={(botId, msg) => {
-              const snippet = msg.text.slice(0, 120).trim();
-              askBot(botId, `What's the deal with this story? ${snippet}`);
-            }}
-          />
-        ))}
+        {!messagesLoading
+          ? messages.map((message, index) => (
+              <Row
+                key={message.id}
+                index={index}
+                message={message}
+                prev={messages[index - 1]}
+                next={messages[index + 1]}
+                isGroup={isGroup}
+                onAskBot={(botId, msg) => {
+                  const snippet = msg.text.slice(0, 120).trim();
+                  askBot(botId, `What's the deal with this story? ${snippet}`);
+                }}
+              />
+            ))
+          : null}
 
         <AnimatePresence>
           {sending || ingesting ? (
