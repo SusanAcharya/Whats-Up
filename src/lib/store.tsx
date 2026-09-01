@@ -392,10 +392,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (backend !== "firebase" || !uid || !db) return;
+    const firestore = requireDb();
+    const userId = uid;
     const listen = (chatId: string) =>
       onSnapshot(
         query(
-          collection(db, "users", uid, "chats", chatId, "messages"),
+          collection(firestore, "users", userId, "chats", chatId, "messages"),
           orderBy("createdAt", "asc"),
         ),
         (snap) => {
