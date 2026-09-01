@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { GROUP_CHAT_ID, getBot, hexAlpha } from "@/lib/bots";
+import { motion, AnimatePresence } from "motion/react";
+import { GROUP_CHAT_ID, getBot } from "@/lib/bots";
+import { TIMELINE_ACCENT, USER_BUBBLE } from "@/lib/design";
 import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
+import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { IconBack, IconRefresh, IconSend, IconSettings } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
@@ -41,7 +44,20 @@ function chatClustered(a?: ChatMessage, b?: ChatMessage) {
 function grow(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = "auto";
-  el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+}
+
+function bubbleRadius(mine: boolean, withPrev: boolean, withNext: boolean) {
+  if (mine) {
+    if (withPrev && withNext) return "18px 18px 6px 18px";
+    if (withPrev) return "18px 6px 6px 18px";
+    if (withNext) return "18px 18px 6px 18px";
+    return "18px 18px 4px 18px";
+  }
+  if (withPrev && withNext) return "18px 18px 18px 6px";
+  if (withPrev) return "6px 18px 18px 6px";
+  if (withNext) return "18px 18px 18px 6px";
+  return "18px 18px 18px 4px";
 }
 
 function usePullToRefresh(onRefresh: () => void, enabled: boolean) {
@@ -66,9 +82,8 @@ function usePullToRefresh(onRefresh: () => void, enabled: boolean) {
       return;
     }
     const delta = Math.max(0, event.touches[0].clientY - startY.current);
-    const clamped = Math.min(delta, 80);
-    setPull(clamped);
-    if (clamped >= 72 && !triggered.current) {
+    setPull(Math.min(delta, 80));
+    if (delta >= 64 && !triggered.current) {
       triggered.current = true;
       setPull(0);
       onRefresh();
@@ -87,12 +102,8 @@ const QUICK_REPLIES = ["Why does this matter?", "Explain simply", "What happens 
 
 export function ChatThread({
   onOpenSettings,
-  statusText,
-  onDismissStatus,
 }: {
   onOpenSettings: (tab?: "alerts" | "filters" | "bots") => void;
-  statusText?: string | null;
-  onDismissStatus?: () => void;
 }) {
   const {
     chats,
@@ -114,7 +125,7 @@ export function ChatThread({
   const bot = chat?.type === "dm" ? getBot(chat.botId ?? "") : undefined;
   const isGroup = selectedChatId === GROUP_CHAT_ID;
   const memberBots = (profile?.enabledBots ?? []).map(getBot).filter(Boolean);
-  const accent = isGroup ? "#fb923c" : (bot?.color ?? "#fff7ed");
+  const accent = isGroup ? TIMELINE_ACCENT : (bot?.color ?? "var(--ink)");
   const seedText =
     composerSeed?.chatId === selectedChatId ? composerSeed.text : undefined;
 
@@ -128,29 +139,14 @@ export function ChatThread({
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, sending, ingesting]);
 
-  async function onSubmit(text: string) {
-    await sendMessage(text);
-  }
-
   return (
-    <section
-      className="thread-bg flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden"
-      style={{ ["--thread-accent" as string]: hexAlpha(accent, 0.18) }}
-    >
-      <header
-        className="relative z-10 flex shrink-0 items-center gap-1.5 border-b border-white/[0.06] bg-black/40 px-2 pb-2 backdrop-blur-xl md:gap-2 md:px-2 md:pb-2.5"
-        style={{ paddingTop: "calc(var(--safe-top) + 8px)" }}
-      >
-        <button
-          type="button"
-          onClick={() => selectChat(null)}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/80 active:bg-white/[0.08] md:hidden"
-          aria-label="back"
-        >
+    <section className="screen-canvas flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <header className="app-header hairline-b flex shrink-0 items-center gap-1 px-1 pb-2 md:px-2">
+        <button type="button" onClick={() => selectChat(null)} className="btn-icon md:hidden" aria-label="Back">
           <IconBack className="h-5 w-5" />
         </button>
         {isGroup ? (
-          <div className="flex -space-x-2.5">
+          <div className="flex -space-x-2 pl-1">
             {memberBots.slice(0, 3).map((member) => (
               <BotMark key={member!.id} id={member!.id} size="sm" />
             ))}
@@ -158,11 +154,11 @@ export function ChatThread({
         ) : (
           <BotMark id={bot?.id} size="sm" />
         )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[16px] font-semibold leading-tight" style={{ color: accent }}>
+        <div className="min-w-0 flex-1 px-1">
+          <p className="truncate text-[17px] font-semibold leading-tight" style={{ color: accent }}>
             {isGroup ? "The timeline" : titleCaseName(bot?.name ?? chat?.title ?? "")}
           </p>
-          <p className="truncate text-[11px] text-white/40">
+          <p className="truncate text-[13px] text-[var(--ink-faint)]">
             {ingesting
               ? "Checking headlines…"
               : isGroup
@@ -170,149 +166,179 @@ export function ChatThread({
                 : bot?.handle}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onOpenSettings("filters")}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
-          aria-label="settings"
-        >
-          <IconSettings className="h-4 w-4" />
+        <button type="button" onClick={() => onOpenSettings("filters")} className="btn-icon" aria-label="Settings">
+          <IconSettings className="h-[18px] w-[18px]" />
         </button>
-        <button
-          type="button"
-          onClick={() => ingest("manual")}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
-          aria-label="refresh"
-        >
-          <IconRefresh className={`h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
+        <button type="button" onClick={() => ingest("manual")} className="btn-icon" aria-label="Refresh">
+          <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
         </button>
       </header>
 
-      {statusText ? (
-        <div className="relative z-10 flex shrink-0 items-start gap-2 border-b border-white/[0.06] bg-white/[0.02] px-3 py-2">
-          <p className="min-w-0 flex-1 text-[12px] leading-5 text-white/55">{statusText}</p>
-          {!ingesting && onDismissStatus ? (
-            <button
-              type="button"
-              onClick={onDismissStatus}
-              className="shrink-0 text-[11px] text-white/35"
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
       <div
         ref={scroller}
-        className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 no-scrollbar md:px-4 md:py-4"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-2 no-scrollbar md:px-4 md:py-3"
         {...pullHandlers}
       >
-        {pull > 8 ? (
-          <div
-            className="flex justify-center pb-2 text-[11px] text-white/40 transition-opacity"
-            style={{ opacity: Math.min(pull / 72, 1) }}
-          >
-            {pull >= 72 ? "Release to refresh" : "Pull to refresh"}
-          </div>
-        ) : null}
+        <PullHint pull={pull} ingesting={ingesting} />
+
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center px-8 pt-24 text-center">
-            {isGroup ? (
-              <div className="mb-4 flex -space-x-3">
-                {memberBots.slice(0, 4).map((member) => (
-                  <BotMark key={member!.id} id={member!.id} size="md" />
-                ))}
-              </div>
-            ) : (
-              <div className="mb-4">
-                <BotMark id={bot?.id} size="lg" />
-              </div>
-            )}
-            <p className="text-[15px] leading-6 text-white/55">
-              {isGroup
-                ? "Quiet on purpose. We only post when it's actually huge."
-                : bot?.id === "pitch"
-                  ? "Ask for a live score, the table, or who's kickoff next."
-                  : `Ask ${titleCaseName(bot?.name ?? "them")} anything about a story they dropped.`}
-            </p>
-            {isGroup ? (
-              <div className="mt-5 flex flex-wrap justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => ingest("manual")}
-                  disabled={ingesting}
-                  className="rounded-full border border-white/15 px-4 py-2 text-[13px] text-white/70"
-                >
-                  {ingesting ? "Checking…" : "Check now"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenSettings("filters")}
-                  className="rounded-full border border-white/15 px-4 py-2 text-[13px] text-white/70"
-                >
-                  Broaden filters
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <EmptyState
+            isGroup={isGroup}
+            bot={bot}
+            memberBots={memberBots}
+            ingesting={ingesting}
+            onRefresh={() => ingest("manual")}
+            onSettings={() => onOpenSettings("filters")}
+          />
         ) : null}
+
         {messages.map((message, index) => (
           <Row
             key={message.id}
+            index={index}
             message={message}
             prev={messages[index - 1]}
             next={messages[index + 1]}
             isGroup={isGroup}
-            onAskBot={(botId, message) => {
-              const snippet = message.text.slice(0, 120).trim();
+            onAskBot={(botId, msg) => {
+              const snippet = msg.text.slice(0, 120).trim();
               askBot(botId, `What's the deal with this story? ${snippet}`);
             }}
           />
         ))}
-        {sending || ingesting ? (
-          <div className="message-block mt-4 flex items-end gap-2.5 pl-0.5">
-            <span className="opacity-40">
-              <BotMark id={isGroup ? memberBots[0]?.id : bot?.id} size="sm" />
-            </span>
-            <div className="typing flex h-9 items-center gap-1 rounded-[18px] bg-white/[0.06] px-3.5 text-white/40">
-              <span>●</span>
-              <span>●</span>
-              <span>●</span>
-            </div>
-          </div>
-        ) : null}
-        {error ? <p className="mt-3 text-center text-xs text-white/45">{error}</p> : null}
+
+        <AnimatePresence>
+          {sending || ingesting ? (
+            <motion.div
+              key="typing"
+              className="mt-3 flex items-end gap-2"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={springSoft}
+            >
+              <span className="opacity-50">
+                <BotMark id={isGroup ? memberBots[0]?.id : bot?.id} size="sm" />
+              </span>
+              <div className="typing flex h-9 min-w-[52px] items-center justify-center gap-1 rounded-[var(--radius-bubble)] bg-[var(--elevated)] px-3.5 text-lg leading-none text-[var(--ink-faint)]">
+                <span>·</span>
+                <span>·</span>
+                <span>·</span>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {error ? <p className="mt-3 text-center text-[13px] text-[var(--ink-faint)]">{error}</p> : null}
       </div>
 
       {!isGroup ? (
         <DmComposer
           key={`${selectedChatId ?? "none"}-${seedText ?? ""}`}
-          accent={accent}
           botName={titleCaseName(bot?.name ?? "them")}
           initialDraft={seedText ?? ""}
           lastBotNews={Boolean(lastBotNews)}
           sending={sending}
-          onSubmit={onSubmit}
+          onSubmit={sendMessage}
           onSeedConsumed={clearComposerSeed}
         />
       ) : (
-        <div
-          className="relative z-10 shrink-0 border-t border-white/[0.06] bg-black/50 px-4 py-3 text-center backdrop-blur-xl"
-          style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
-        >
-          <p className="text-[12px] text-white/35">
-            Tap a story to open the link · Ask a bot in their DM
-          </p>
+        <div className="app-footer hairline-t shrink-0 px-4 py-2.5 text-center">
+          <p className="text-[12px] text-[var(--ink-faint)]">Tap a story for the link · Ask bots in their DMs</p>
         </div>
       )}
     </section>
   );
 }
 
+function PullHint({ pull, ingesting }: { pull: number; ingesting: boolean }) {
+  if (pull <= 6 && !ingesting) return null;
+  const ready = pull >= 64;
+  return (
+    <div className="pull-indicator">
+      {ingesting ? (
+        <motion.div
+          className="pull-ring animate-spin"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+        />
+      ) : (
+        <motion.div
+          className="pull-ring"
+          style={{ rotate: `${(pull / 64) * 180}deg`, opacity: Math.min(pull / 64, 1) }}
+          animate={{ scale: ready ? 1.08 : 1 }}
+          transition={springSoft}
+        />
+      )}
+      <p className="mt-1 text-[11px] text-[var(--ink-faint)]">
+        {ingesting ? "Refreshing…" : ready ? "Release" : "Pull down"}
+      </p>
+    </div>
+  );
+}
+
+function EmptyState({
+  isGroup,
+  bot,
+  memberBots,
+  ingesting,
+  onRefresh,
+  onSettings,
+}: {
+  isGroup: boolean;
+  bot: ReturnType<typeof getBot> | undefined;
+  memberBots: (ReturnType<typeof getBot> | undefined)[];
+  ingesting: boolean;
+  onRefresh: () => void;
+  onSettings: () => void;
+}) {
+  return (
+    <motion.div
+      className="flex flex-col items-center px-6 pt-20 text-center"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={springSoft}
+    >
+      {isGroup ? (
+        <div className="mb-4 flex -space-x-2">
+          {memberBots.slice(0, 4).map((member, i) => (
+            <motion.div
+              key={member!.id}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ ...springSoft, delay: i * 0.06 }}
+            >
+              <BotMark id={member!.id} size="md" />
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <motion.div className="mb-4" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring}>
+          <BotMark id={bot?.id} size="lg" />
+        </motion.div>
+      )}
+      <p className="max-w-[280px] text-[16px] leading-relaxed text-[var(--ink-muted)]">
+        {isGroup
+          ? "Quiet on purpose. We only post when it's actually huge."
+          : bot?.id === "pitch"
+            ? "Ask for a live score, the table, or who's kickoff next."
+            : `Ask ${titleCaseName(bot?.name ?? "them")} about any story they drop.`}
+      </p>
+      {isGroup ? (
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <button type="button" onClick={onRefresh} disabled={ingesting} className="btn-secondary w-auto px-4">
+            {ingesting ? "Checking…" : "Check now"}
+          </button>
+          <button type="button" onClick={onSettings} className="btn-secondary w-auto px-4">
+            Broaden filters
+          </button>
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
 function DmComposer({
-  accent,
   botName,
   initialDraft,
   lastBotNews,
@@ -320,7 +346,6 @@ function DmComposer({
   onSubmit,
   onSeedConsumed,
 }: {
-  accent: string;
   botName: string;
   initialDraft: string;
   lastBotNews: boolean;
@@ -331,6 +356,7 @@ function DmComposer({
   const [draft, setDraft] = useState(initialDraft);
   const composer = useRef<HTMLTextAreaElement>(null);
   const showQuickReplies = lastBotNews && !draft.trim();
+  const canSend = Boolean(draft.trim()) && !sending;
 
   useEffect(() => {
     if (initialDraft) onSeedConsumed();
@@ -351,29 +377,36 @@ function DmComposer({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="relative z-10 flex shrink-0 flex-col gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
-      style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
-    >
-      {showQuickReplies ? (
-        <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
-          {QUICK_REPLIES.map((label) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => {
-                setDraft(label);
-                composer.current?.focus();
-              }}
-              className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] text-white/55"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <div className="flex items-end gap-2">
+    <form onSubmit={submit} className="app-footer hairline-t shrink-0 px-3 pt-2 md:px-4">
+      <AnimatePresence>
+        {showQuickReplies ? (
+          <motion.div
+            className="mb-2 flex gap-2 overflow-x-auto pb-0.5 no-scrollbar"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={springSoft}
+          >
+            {QUICK_REPLIES.map((label, i) => (
+              <motion.button
+                key={label}
+                type="button"
+                initial={{ opacity: 0, x: 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ ...springSoft, delay: i * 0.05 }}
+                onClick={() => {
+                  setDraft(label);
+                  composer.current?.focus();
+                }}
+                className="shrink-0 rounded-[var(--radius-full)] border border-[var(--hairline)] bg-[var(--elevated)] px-3 py-2 text-[13px] text-[var(--ink-muted)] active:scale-[0.97]"
+              >
+                {label}
+              </motion.button>
+            ))}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+      <div className="composer-field flex items-end gap-2 rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--elevated)] p-1.5 pl-3">
         <textarea
           ref={composer}
           value={draft}
@@ -387,17 +420,23 @@ function DmComposer({
           }}
           rows={1}
           placeholder={`Message ${botName}`}
-          className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
+          className="max-h-[120px] min-h-[40px] flex-1 resize-none border-0 bg-transparent py-2 text-[16px] leading-[1.45] text-[var(--ink)] outline-none placeholder:text-[var(--ink-faint)]"
         />
-        <button
+        <motion.button
           type="submit"
-          disabled={!draft.trim() || sending}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
-          style={{ background: draft.trim() ? accent : undefined }}
-          aria-label="send"
+          disabled={!canSend}
+          className="grid h-[40px] w-[40px] shrink-0 place-items-center rounded-[var(--radius-full)]"
+          animate={{
+            scale: canSend ? 1 : 0.92,
+            backgroundColor: canSend ? USER_BUBBLE.bg : "rgba(255,255,255,0.06)",
+          }}
+          whileTap={canSend ? { scale: 0.88 } : undefined}
+          transition={spring}
+          style={{ color: canSend ? USER_BUBBLE.text : "var(--ink-faint)" }}
+          aria-label="Send"
         >
-          <IconSend className="h-4 w-4" />
-        </button>
+          <IconSend className="h-[17px] w-[17px]" />
+        </motion.button>
       </div>
     </form>
   );
@@ -405,12 +444,14 @@ function DmComposer({
 
 function Row({
   message,
+  index,
   prev,
   next,
   isGroup,
   onAskBot,
 }: {
   message: ChatMessage;
+  index: number;
   prev?: ChatMessage;
   next?: ChatMessage;
   isGroup: boolean;
@@ -426,18 +467,19 @@ function Row({
 
   if (message.kind === "system") {
     return (
-      <div className="message-block">
+      <MessageEnter index={index}>
         {showDay ? <DayChip ts={message.createdAt} /> : null}
-        <p className="mx-auto my-2 max-w-[22rem] rounded-full bg-white/[0.04] px-3.5 py-1.5 text-center text-[11px] leading-4 text-white/40">
-          {message.text}
+        <p className="my-3 text-center">
+          <span className="day-pill">{message.text}</span>
         </p>
-      </div>
+      </MessageEnter>
     );
   }
 
   if (message.kind === "news") {
     return (
       <NewsCard
+        index={index}
         message={message}
         author={author ?? undefined}
         isGroup={isGroup}
@@ -448,55 +490,46 @@ function Row({
     );
   }
 
-  const radius = mine
-    ? withNext
-      ? "18px 18px 8px 18px"
-      : "18px 18px 5px 18px"
-    : withNext
-      ? "18px 18px 18px 8px"
-      : "18px 18px 18px 5px";
+  const radius = bubbleRadius(mine, withPrev, withNext);
 
   return (
-    <div className={`message-block ${withPrev ? "mt-1" : "mt-4 first:mt-0"}`}>
+    <MessageEnter index={index} className={withPrev ? "mt-0.5" : "mt-3 first:mt-0"}>
       {showDay ? <DayChip ts={message.createdAt} /> : null}
-      {showGap ? <MessageGap /> : null}
-      <div className={`flex ${mine ? "justify-end" : "justify-start"} items-end gap-2.5`}>
+      {showGap ? <div className="my-3" aria-hidden /> : null}
+      <div className={`flex ${mine ? "justify-end" : "justify-start"} items-end gap-2`}>
         {!mine ? (
-          <span className={`shrink-0 ${withPrev ? "invisible" : ""}`}>
-            <BotMark id={author?.id} size="sm" />
+          <span className={`w-8 shrink-0 ${withPrev ? "invisible" : ""}`}>
+            {!withPrev ? <BotMark id={author?.id} size="sm" /> : null}
           </span>
         ) : null}
-        <div className={`max-w-[80%] ${mine ? "items-end" : "items-start"} flex flex-col`}>
+        <div className={`max-w-[min(82%,320px)] ${mine ? "items-end" : "items-start"} flex flex-col`}>
           {!mine && isGroup && !withPrev ? (
-            <p className="mb-1 text-[12px] font-medium" style={{ color: author?.color }}>
+            <p className="mb-1 px-1 text-[12px] font-medium" style={{ color: author?.color }}>
               {titleCaseName(author?.name ?? "")}
             </p>
           ) : null}
           <div
-            className="px-3.5 py-2.5 text-[15px] leading-[1.45]"
+            className={`bubble ${mine ? "bubble-sent" : "bubble-received"}`}
             style={{
-              background: mine ? "#e8e4dc" : (author?.bubble ?? "#1a1418"),
-              color: mine ? "#16120c" : "#f4f4f5",
+              background: mine ? undefined : (author?.bubble ?? "var(--elevated)"),
+              color: mine ? undefined : "var(--ink)",
               borderRadius: radius,
             }}
           >
             <p className="whitespace-pre-wrap">
               {message.text}
-              {!withNext ? (
-                <span className={`msg-time ${mine ? "text-black/35" : "text-white/28"}`}>
-                  {clock(message.createdAt)}
-                </span>
-              ) : null}
+              {!withNext ? <span className="msg-time">{clock(message.createdAt)}</span> : null}
             </p>
           </div>
         </div>
       </div>
-    </div>
+    </MessageEnter>
   );
 }
 
 function NewsCard({
   message,
+  index,
   author,
   isGroup,
   showDay,
@@ -504,6 +537,7 @@ function NewsCard({
   onAskBot,
 }: {
   message: ChatMessage;
+  index: number;
   author: ReturnType<typeof getBot> | undefined;
   isGroup: boolean;
   showDay: boolean;
@@ -524,35 +558,38 @@ function NewsCard({
   const botId = author?.id;
 
   return (
-    <article className="message-block mt-6 border-b border-white/[0.05] pb-6 last:mb-0 last:border-b-0 last:pb-0">
+    <MessageEnter index={index} className="mt-4">
       {showDay ? <DayChip ts={message.createdAt} /> : null}
-      {showGap ? <MessageGap /> : null}
-      <div className="flex gap-3">
-        <span className="mt-0.5 shrink-0">
-          <BotMark id={author?.id} size="sm" />
-        </span>
+      {showGap ? <div className="my-3" aria-hidden /> : null}
+      <div className="flex gap-2.5">
+        <BotMark id={author?.id} size="sm" />
         <div className="min-w-0 flex-1">
-          <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <header className="mb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             {isGroup ? (
               <span className="text-[13px] font-semibold" style={{ color: author?.color }}>
                 {titleCaseName(author?.name ?? "")}
               </span>
             ) : null}
             {flash ? (
-              <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+              <span
+                className="rounded-[var(--radius-full)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                style={{ background: "var(--elevated)", color: "var(--ink-faint)" }}
+              >
                 {flash}
               </span>
             ) : null}
-            <span className="text-[11px] text-white/30">{clock(message.createdAt)}</span>
+            <span className="tabular text-[11px] text-[var(--ink-faint)]">{clock(message.createdAt)}</span>
           </header>
-          <div
-            className="overflow-hidden rounded-[14px] border border-white/[0.08]"
+          <motion.div
+            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--hairline)]"
             style={{
-              background: author?.bubble ?? "#1a1418",
-              boxShadow: `inset 3px 0 0 ${author?.color ?? "rgba(255,255,255,0.35)"}`,
+              background: author?.bubble ?? "var(--elevated)",
+              boxShadow: `inset 3px 0 0 ${author?.color ?? "var(--ink-faint)"}`,
             }}
+            whileTap={{ scale: 0.995 }}
+            transition={springSoft}
           >
-            <div className="px-4 py-3.5 text-[15px] leading-[1.52] text-[#f4f4f5]">
+            <div className="bubble-news px-3.5 py-3 text-[var(--ink)]">
               <p className="whitespace-pre-wrap">{body}</p>
             </div>
             {message.articleUrl ? (
@@ -560,25 +597,30 @@ function NewsCard({
                 href={message.articleUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="block border-t border-white/[0.08] bg-black/30 px-4 py-3 transition hover:bg-black/40"
+                className="group flex items-center justify-between gap-2 hairline-t bg-[var(--panel)] px-3.5 py-3 transition active:bg-[var(--elevated)]"
               >
-                <span className="block truncate text-[11px] font-medium text-white/40">
-                  {sourceLabel}
-                </span>
-                {showTitle ? (
-                  <span className="mt-1.5 block text-[13px] font-medium leading-snug text-white/92">
-                    {title}
+                <span className="min-w-0">
+                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-[var(--ink-faint)]">
+                    {sourceLabel}
                   </span>
-                ) : null}
+                  {showTitle ? (
+                    <span className="mt-1 block text-[14px] font-medium leading-snug text-[var(--ink)] group-active:text-white">
+                      {title}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-[var(--ink-faint)]" aria-hidden>
+                  →
+                </span>
               </a>
             ) : null}
-          </div>
+          </motion.div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {keywords.length > 0 ? (
               <button
                 type="button"
                 onClick={() => setWhyOpen((open) => !open)}
-                className="text-[11px] text-white/35 underline-offset-2 hover:text-white/50 hover:underline"
+                className="text-[12px] text-[var(--ink-faint)] underline-offset-2 hover:text-[var(--ink-muted)] hover:underline"
               >
                 {whyOpen ? "Hide" : "Why this story?"}
               </button>
@@ -587,40 +629,31 @@ function NewsCard({
               <button
                 type="button"
                 onClick={() => onAskBot(botId, message)}
-                className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-white/50"
+                className="rounded-[var(--radius-full)] border border-[var(--hairline)] px-2.5 py-1 text-[12px] text-[var(--ink-muted)] active:scale-[0.97]"
               >
                 Ask {titleCaseName(author?.name ?? "")}
               </button>
             ) : null}
           </div>
-          {whyOpen && keywords.length > 0 ? (
-            <div className="mt-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-              <p className="text-[11px] font-medium text-white/40">Matched your filters</p>
+          <ExpandHeight open={whyOpen && keywords.length > 0}>
+            <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-3 py-2.5">
+              <p className="text-[11px] font-medium text-[var(--ink-faint)]">Matched your filters</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {keywords.map((word) => (
                   <span
                     key={word}
-                    className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/60"
+                    className="rounded-[var(--radius-full)] bg-[var(--panel)] px-2 py-0.5 text-[11px] text-[var(--ink-muted)]"
                   >
                     {word}
                   </span>
                 ))}
               </div>
-              {message.sources && message.sources.length > 0 ? (
-                <p className="mt-2 text-[11px] text-white/30">
-                  Sources: {message.sources.join(", ")}
-                </p>
-              ) : null}
             </div>
-          ) : null}
+          </ExpandHeight>
         </div>
       </div>
-    </article>
+    </MessageEnter>
   );
-}
-
-function MessageGap() {
-  return <div className="my-4 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" aria-hidden />;
 }
 
 function sameCopy(title: string, body: string) {
@@ -631,8 +664,8 @@ function sameCopy(title: string, body: string) {
 
 function DayChip({ ts }: { ts: number }) {
   return (
-    <p className="my-4 text-center text-[11px] font-medium tracking-wide text-white/30">
-      {dayLabel(ts)}
+    <p className="flex justify-center">
+      <span className="day-pill">{dayLabel(ts)}</span>
     </p>
   );
 }

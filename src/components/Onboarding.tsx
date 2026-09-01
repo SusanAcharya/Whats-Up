@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { BOTS } from "@/lib/bots";
 import { defaultNotificationPrefs } from "@/lib/notifications";
 import { defaultPreferences } from "@/lib/preferences";
@@ -9,13 +10,12 @@ import { useStore } from "@/lib/store";
 import { BotMark } from "./BotMark";
 import { PreferencesEditor } from "./Preferences";
 import { titleCaseName } from "@/lib/notifications";
+import { MetaLabel, PrimaryButton, ScreenTitle, StepProgress, Toggle } from "./ui";
+import { springSoft } from "./motion";
 
 function OnboardingFooter({ children }: { children: ReactNode }) {
   return (
-    <div
-      className="shrink-0 border-t border-white/[0.08] bg-[#07040a]/95 px-5 pt-3 backdrop-blur-xl"
-      style={{ paddingBottom: "calc(var(--safe-bottom) + 16px)" }}
-    >
+    <div className="app-footer hairline-t shrink-0 px-5 pt-3">
       {children}
     </div>
   );
@@ -51,47 +51,57 @@ export function Onboarding() {
   }
 
   return (
-    <div className="chat-bg flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden">
-      <div className="shrink-0 px-5 pt-[calc(var(--safe-top)+28px)]">
-        <p className="display text-[14px] font-black italic text-white/50">What&apos;s Up</p>
-        <p className="mt-2 text-[11px] font-medium text-white/30">
-          Step {step} of 3
-        </p>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="app-header shrink-0 px-5 pb-4">
+        <p className="text-[13px] font-medium text-[var(--ink-faint)]">What&apos;s Up</p>
+        <div className="mt-4">
+          <StepProgress step={step} total={3} />
+        </div>
         {step === 1 ? (
           <>
-            <h1 className="display mt-3 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[36px]">
-              Pick 2–3 bots to start.
-            </h1>
-            <p className="mt-3 text-[15px] leading-6 text-[var(--muted)]">
-              Each one texts you directly when something big happens in their world.
-            </p>
+            <ScreenTitle>
+              <span className="mt-4 block">Pick 2–3 bots</span>
+            </ScreenTitle>
+            <MetaLabel>
+              <span className="mt-2 block">Each one texts you when something big happens in their world.</span>
+            </MetaLabel>
           </>
         ) : step === 2 ? (
           <>
-            <h1 className="display mt-3 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[36px]">
-              Tell them what to watch.
-            </h1>
-            <p className="mt-3 text-[15px] leading-6 text-[var(--muted)]">
-              Sporty can be NBA, a league, a club. The others work the same way.
-            </p>
+            <ScreenTitle>
+              <span className="mt-4 block">Set your filters</span>
+            </ScreenTitle>
+            <MetaLabel>
+              <span className="mt-2 block">Sporty can be NBA, a league, a club. The others work the same way.</span>
+            </MetaLabel>
           </>
         ) : (
           <>
-            <h1 className="display mt-3 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[36px]">
-              Get pinged like a DM.
-            </h1>
-            <p className="mt-3 text-[15px] leading-6 text-[var(--muted)]">
-              Each bot can text your lock screen when they post. Timeline alerts stay off unless
-              you want them.
-            </p>
+            <ScreenTitle>
+              <span className="mt-4 block">Lock screen alerts</span>
+            </ScreenTitle>
+            <MetaLabel>
+              <span className="mt-2 block">
+                Each bot can ping you like a DM. Timeline alerts stay off unless you want them.
+              </span>
+            </MetaLabel>
           </>
         )}
       </div>
 
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          initial={{ opacity: 0, x: 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -12 }}
+          transition={springSoft}
+        >
       {step === 1 ? (
         <>
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-5">
-            <div className="grid gap-2.5 pb-4">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5">
+            <div className="grid gap-2 pb-4">
               {BOTS.map((bot) => {
                 const on = picked.includes(bot.id);
                 return (
@@ -99,30 +109,30 @@ export function Onboarding() {
                     key={bot.id}
                     type="button"
                     onClick={() => toggle(bot.id)}
-                    className="flex items-center gap-3 rounded-2xl border px-3 py-3.5 text-left transition"
+                    className="flex min-h-[72px] items-center gap-3 rounded-[var(--radius-md)] border px-3 py-3 text-left transition active:scale-[0.99]"
                     style={{
-                      borderColor: on ? bot.color : "rgba(255,255,255,0.1)",
-                      background: on ? bot.bubble : "rgba(255,255,255,0.02)",
+                      borderColor: on ? bot.color : "var(--hairline)",
+                      background: on ? "var(--elevated)" : "transparent",
                     }}
                   >
                     <BotMark id={bot.id} size="md" />
                     <span className="min-w-0 flex-1">
                       <span
-                        className="display block text-[16px] font-black tracking-tight"
-                        style={{ color: on ? bot.color : "#fff7ed" }}
+                        className="block text-[17px] font-semibold leading-tight"
+                        style={{ color: on ? bot.color : "var(--ink)" }}
                       >
                         {titleCaseName(bot.name)}
                       </span>
-                      <span className="mt-0.5 block text-[13px] leading-snug text-[var(--muted)]">
+                      <span className="mt-0.5 block text-[13px] leading-snug text-[var(--ink-muted)]">
                         {bot.topic} · {bot.tagline}
                       </span>
                     </span>
                     <span
-                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold"
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-[var(--radius-full)] text-[11px] font-semibold"
                       style={{
-                        background: on ? "#fff" : "transparent",
-                        color: on ? "#000" : "#737373",
-                        border: on ? "none" : "1px solid rgba(255,255,255,0.2)",
+                        background: on ? "var(--ink)" : "transparent",
+                        color: on ? "var(--canvas)" : "var(--ink-faint)",
+                        border: on ? "none" : "1.5px solid var(--hairline-strong)",
                       }}
                     >
                       {on ? "✓" : ""}
@@ -133,36 +143,20 @@ export function Onboarding() {
             </div>
           </div>
           <OnboardingFooter>
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              disabled={picked.length === 0}
-              className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-30"
-            >
-              Next · Set filters
-              {picked.length > 0 ? ` (${picked.length})` : ""}
-            </button>
+            <PrimaryButton disabled={picked.length === 0} onClick={() => setStep(2)}>
+              Next · Set filters{picked.length > 0 ? ` (${picked.length})` : ""}
+            </PrimaryButton>
           </OnboardingFooter>
         </>
       ) : step === 2 ? (
         <>
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-4">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5">
             <PreferencesEditor value={prefs} onChange={setPrefs} botIds={picked} />
           </div>
           <OnboardingFooter>
             <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black"
-              >
-                Next · Notifications
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="h-10 w-full text-sm text-[var(--muted)]"
-              >
+              <PrimaryButton onClick={() => setStep(3)}>Next · Notifications</PrimaryButton>
+              <button type="button" onClick={() => setStep(1)} className="btn-secondary">
                 Back
               </button>
             </div>
@@ -170,7 +164,7 @@ export function Onboarding() {
         </>
       ) : (
         <>
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-5">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-2">
             <div className="grid gap-2">
               {picked.map((id) => {
                 const bot = BOTS.find((row) => row.id === id);
@@ -178,65 +172,48 @@ export function Onboarding() {
                 return (
                   <div
                     key={id}
-                    className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-3 py-3"
+                    className="flex min-h-[72px] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-3 py-3"
                   >
                     <BotMark id={id} size="md" />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold" style={{ color: bot?.color }}>
                         {titleCaseName(bot?.name ?? id)}
                       </p>
-                      <p className="text-[12px] text-white/40">DM-style alerts</p>
+                      <p className="text-[13px] text-[var(--ink-faint)]">DM-style alerts</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
+                    <Toggle
+                      label={`${on ? "Disable" : "Enable"} ${bot?.name} alerts`}
+                      on={on}
+                      onChange={(value) =>
                         setNotifications((current) => ({
                           ...current,
-                          bots: { ...current.bots, [id]: !on },
+                          bots: { ...current.bots, [id]: value },
                         }))
                       }
-                      className="h-8 w-12 shrink-0 rounded-full p-0.5"
-                      style={{ background: on ? (bot?.color ?? "#fff") : "#2a2a2a" }}
-                      aria-label={`${on ? "Disable" : "Enable"} ${bot?.name} alerts`}
-                    >
-                      <span
-                        className="block h-7 w-7 rounded-full transition"
-                        style={{
-                          transform: on ? "translateX(16px)" : "translateX(0)",
-                          background: on ? "#000" : "#fff",
-                        }}
-                      />
-                    </button>
+                      accent={bot?.color}
+                    />
                   </div>
                 );
               })}
             </div>
-            <p className="mt-5 text-[13px] leading-5 text-white/40">
-              We&apos;ll ask for notification permission next. Add to Home Screen on iPhone for
-              the best experience.
+            <p className="mt-5 text-[13px] leading-relaxed text-[var(--ink-faint)]">
+              We&apos;ll ask for notification permission next. Add to Home Screen on iPhone for the best experience.
             </p>
           </div>
           <OnboardingFooter>
             <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={finish}
-                disabled={picked.length === 0 || busy}
-                className="h-12 w-full rounded-full bg-white text-sm font-semibold text-black disabled:opacity-40"
-              >
+              <PrimaryButton disabled={picked.length === 0 || busy} onClick={finish}>
                 {busy ? "Checking headlines…" : "Allow alerts & start"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="h-10 w-full text-sm text-[var(--muted)]"
-              >
+              </PrimaryButton>
+              <button type="button" onClick={() => setStep(2)} className="btn-secondary">
                 Back
               </button>
             </div>
           </OnboardingFooter>
         </>
       )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Syne } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { PwaRegister } from "@/components/PwaRegister";
 import { StoreProvider } from "@/lib/store";
 import "./globals.css";
@@ -9,10 +9,9 @@ const geist = Geist({
   subsets: ["latin"],
 });
 
-const display = Syne({
-  variable: "--font-display",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -30,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07040a",
+  themeColor: "#0a0a0c",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -38,7 +37,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geist.variable} ${display.variable} h-full`}>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} h-full`}>
       <body className="h-dvh overflow-hidden bg-background text-foreground antialiased">
         <StoreProvider>
           <PwaRegister />

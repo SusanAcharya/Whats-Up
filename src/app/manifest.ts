@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "News as a group chat. Only the stories you actually care about.",
     start_url: "/",
     display: "standalone",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#0a0a0c",
+    theme_color: "#0a0a0c",
     orientation: "portrait-primary",
     icons: [
       {

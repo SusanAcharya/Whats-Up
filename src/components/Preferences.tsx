@@ -24,10 +24,10 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-2 text-[13px] tracking-tight transition active:scale-[0.98] ${
+      className={`min-h-[36px] rounded-[var(--radius-full)] border px-3 py-1.5 text-[13px] transition active:scale-[0.98] ${
         on
-          ? "border-white bg-white text-black"
-          : "border-white/15 bg-transparent text-white/70"
+          ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--canvas)]"
+          : "border-[var(--hairline)] bg-transparent text-[var(--ink-muted)]"
       }`}
     >
       {label}
@@ -64,13 +64,13 @@ function CustomAdd({
         }}
         placeholder="add your own"
         aria-label={label}
-        className="h-11 min-w-0 flex-1 rounded-full border border-white/12 bg-white/4 px-4 text-[16px] outline-none placeholder:text-white/30"
+        className="h-11 min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-3 text-[16px] outline-none placeholder:text-[var(--ink-faint)]"
       />
       <button
         type="button"
         onClick={submit}
         disabled={!text.trim()}
-        className="h-11 shrink-0 rounded-full border border-white/20 px-4 text-[13px] disabled:opacity-30"
+        className="btn-secondary w-auto shrink-0 px-4 text-[13px]"
       >
         add
       </button>
@@ -117,22 +117,17 @@ export function PreferencesEditor({
         const bot = getBot(config.botId);
         const pref = value[config.botId];
         return (
-          <section key={config.botId} className="border-t border-white/8 pt-5 first:border-t-0 first:pt-0">
+          <section key={config.botId} className="hairline-t pt-5 first:border-t-0 first:pt-0">
             <div className="mb-3 flex items-start gap-2.5">
               <BotMark id={bot?.id} size="sm" />
               <div className="min-w-0">
-                <h3
-                  className="display text-[16px] font-black tracking-tight md:text-[18px]"
-                  style={{ color: bot?.color }}
-                >
+                <h3 className="text-[17px] font-semibold" style={{ color: bot?.color }}>
                   {titleCaseName(bot?.name ?? config.botId)}
                 </h3>
-                <p className="mt-0.5 text-[12px] leading-snug text-[var(--muted)] md:text-[13px]">
-                  {config.blurb}
-                </p>
+                <p className="mt-0.5 text-[13px] leading-snug text-[var(--ink-muted)]">{config.blurb}</p>
               </div>
             </div>
-            <div className="grid gap-4 md:gap-5">
+            <div className="grid gap-4">
               {config.sections.map((section, index) => {
                 if (!sectionVisible(section, pref)) return null;
                 const selected = pref[section.key];
@@ -149,9 +144,7 @@ export function PreferencesEditor({
                   ) === section;
                 return (
                   <div key={`${config.botId}-${section.key}-${index}`}>
-                    <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">
-                      {section.label}
-                    </p>
+                    <p className="mb-2 text-[13px] font-medium text-[var(--ink-faint)]">{section.label}</p>
                     <div className="flex flex-wrap gap-2">
                       {section.options.map((option) => (
                         <Chip
@@ -189,10 +182,8 @@ export function PreferencesEditor({
                 );
               })}
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">
-                  Keywords
-                </p>
-                <p className="mb-2 text-[12px] leading-5 text-[var(--muted)]">
+                <p className="mb-2 text-[13px] font-medium text-[var(--ink-faint)]">Keywords</p>
+                <p className="mb-2 text-[13px] leading-relaxed text-[var(--ink-muted)]">
                   Only stories that hit these words make the feed.
                 </p>
                 <div className="flex flex-wrap gap-2">

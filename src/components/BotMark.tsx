@@ -158,7 +158,7 @@ function Pitch() {
 function Group() {
   return (
     <Plate fill="#1c1917" ring="#fdba74">
-      <rect x="10" y="16" width="26" height="18" rx="8" fill="#fb923c" stroke="#111" strokeWidth="2" />
+      <rect x="10" y="16" width="26" height="18" rx="8" fill="#e8956f" stroke="#111" strokeWidth="2" />
       <rect x="26" y="26" width="28" height="18" rx="8" fill="#38bdf8" stroke="#111" strokeWidth="2" />
       <rect x="16" y="36" width="24" height="16" rx="8" fill="#facc15" stroke="#111" strokeWidth="2" />
       <text x="32" y="33" textAnchor="middle" fontSize="11" fill="#111" fontWeight="800">
