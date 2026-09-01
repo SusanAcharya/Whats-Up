@@ -5,7 +5,7 @@ import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { Chat } from "@/lib/types";
 import { BotMark } from "./BotMark";
-import { IconBell, IconPlus, IconRefresh, IconSliders } from "./icons";
+import { IconRefresh, IconSettings } from "./icons";
 
 function timeLabel(ts: number) {
   const delta = Date.now() - ts;
@@ -71,13 +71,13 @@ function ChatRow({
 }
 
 export function ChatList({
-  onOpenMembers,
-  onOpenPrefs,
-  onOpenNotifications,
+  onOpenSettings,
+  statusText,
+  onDismissStatus,
 }: {
-  onOpenMembers: () => void;
-  onOpenPrefs: () => void;
-  onOpenNotifications: () => void;
+  onOpenSettings: () => void;
+  statusText?: string | null;
+  onDismissStatus?: () => void;
 }) {
   const { chats, ingesting, ingest, selectChat, selectedChatId, profile, backend } = useStore();
   const members = profile?.enabledBots.length ?? 0;
@@ -95,17 +95,17 @@ export function ChatList({
         className="relative z-10 shrink-0 px-4 pb-2 md:px-5 md:pb-3"
         style={{ paddingTop: "calc(var(--safe-top) + 12px)" }}
       >
-        <p className="display text-[12px] font-black italic tracking-tight text-rose-300 md:text-[13px]">
+        <p className="display text-[12px] font-black italic tracking-tight text-white/50 md:text-[13px]">
           What&apos;s Up
         </p>
         <h1 className="display mt-0.5 text-[26px] font-black leading-none tracking-tight md:mt-1 md:text-[34px]">
           Chats
         </h1>
         <p className="mt-1.5 text-[11px] text-[var(--muted)] md:mt-2 md:text-[12px]">
-          {members} {members === 1 ? "loudmouth" : "loudmouths"} in the group
+          {members} {members === 1 ? "bot" : "bots"} enabled
         </p>
 
-        <div className="mt-3 grid grid-cols-4 overflow-hidden rounded-xl border border-white/[0.08] bg-black/30 md:mt-4 md:rounded-2xl">
+        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl border border-white/[0.08] bg-black/30 md:mt-4 md:rounded-2xl">
           <button
             type="button"
             onClick={() => ingest("manual")}
@@ -117,32 +117,30 @@ export function ChatList({
           </button>
           <button
             type="button"
-            onClick={onOpenPrefs}
+            onClick={onOpenSettings}
             className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 border-l border-white/[0.08] py-2 text-white/70 active:bg-white/[0.08]"
-            aria-label="Filters"
+            aria-label="Settings"
           >
-            <IconSliders className="h-[17px] w-[17px]" />
-            <span className="text-[10px] font-medium tracking-wide">Filters</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenNotifications}
-            className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 border-l border-white/[0.08] py-2 text-white/70 active:bg-white/[0.08]"
-            aria-label="Notifications"
-          >
-            <IconBell className="h-[17px] w-[17px]" />
-            <span className="text-[10px] font-medium tracking-wide">Alerts</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenMembers}
-            className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 border-l border-white/[0.08] bg-[#fde047]/10 py-2 text-[#fde047] active:bg-[#fde047]/18"
-            aria-label="Add members"
-          >
-            <IconPlus className="h-[17px] w-[17px]" />
-            <span className="text-[10px] font-semibold tracking-wide">Add bot</span>
+            <IconSettings className="h-[17px] w-[17px]" />
+            <span className="text-[10px] font-medium tracking-wide">Settings</span>
           </button>
         </div>
+
+        {statusText ? (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+            <p className="min-w-0 flex-1 text-[12px] leading-5 text-white/55">{statusText}</p>
+            {!ingesting && onDismissStatus ? (
+              <button
+                type="button"
+                onClick={onDismissStatus}
+                className="shrink-0 text-[11px] text-white/35"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-1 no-scrollbar md:px-4 md:py-2">
@@ -184,7 +182,7 @@ export function ChatList({
       </div>
 
       <p className="relative z-10 shrink-0 border-t border-white/[0.06] px-4 py-2.5 text-center text-[10px] text-white/30 md:px-5 md:py-3 md:text-[11px]">
-        {backend === "local" ? "This phone only. Chaotic on purpose." : "Synced · only the important pings"}
+        {backend === "local" ? "This phone only." : "Synced · background checks every 15 min"}
       </p>
     </div>
   );

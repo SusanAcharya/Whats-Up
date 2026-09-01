@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { GROUP_CHAT_ID, getBot, hexAlpha } from "@/lib/bots";
+import { GROUP_CHAT_ID, dmChatId, getBot, hexAlpha } from "@/lib/bots";
 import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
-import type { ChatMessage } from "@/lib/types";
+import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
-import { IconBack, IconPeople, IconRefresh, IconSend, IconSliders } from "./icons";
+import { IconBack, IconRefresh, IconSend } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
 
@@ -44,12 +44,42 @@ function grow(el: HTMLTextAreaElement | null) {
   el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
 }
 
+function usePullToRefresh(onRefresh: () => void, enabled: boolean) {
+  const startY = useRef(0);
+  const pulling = useRef(false);
+
+  function onTouchStart(event: React.TouchEvent) {
+    if (!enabled) return;
+    const el = event.currentTarget as HTMLElement;
+    if (el.scrollTop <= 0) {
+      startY.current = event.touches[0].clientY;
+      pulling.current = true;
+    }
+  }
+
+  function onTouchMove(event: React.TouchEvent) {
+    if (!pulling.current) return;
+    const delta = event.touches[0].clientY - startY.current;
+    if (delta < 80) return;
+    pulling.current = false;
+    onRefresh();
+  }
+
+  function onTouchEnd() {
+    pulling.current = false;
+  }
+
+  return { onTouchStart, onTouchMove, onTouchEnd };
+}
+
 export function ChatThread({
-  onOpenMembers,
-  onOpenPrefs,
+  onOpenSettings,
+  statusText,
+  onDismissStatus,
 }: {
-  onOpenMembers: () => void;
-  onOpenPrefs: () => void;
+  onOpenSettings: (tab?: "alerts" | "filters" | "bots") => void;
+  statusText?: string | null;
+  onDismissStatus?: () => void;
 }) {
   const {
     chats,
@@ -71,6 +101,8 @@ export function ChatThread({
   const isGroup = selectedChatId === GROUP_CHAT_ID;
   const memberBots = (profile?.enabledBots ?? []).map(getBot).filter(Boolean);
   const accent = isGroup ? "#fb923c" : (bot?.color ?? "#fff7ed");
+
+  const pullHandlers = usePullToRefresh(() => ingest("manual"), !ingesting);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -119,32 +151,12 @@ export function ChatThread({
           </p>
           <p className="truncate text-[11px] text-white/40">
             {ingesting
-              ? "catching up..."
+              ? "Checking headlines…"
               : isGroup
-                ? `${memberBots.length} in the group`
+                ? `${memberBots.length} bots · read only`
                 : bot?.handle}
           </p>
         </div>
-        {isGroup ? (
-          <button
-            type="button"
-            onClick={onOpenPrefs}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
-            aria-label="filters"
-          >
-            <IconSliders className="h-4 w-4" />
-          </button>
-        ) : null}
-        {isGroup ? (
-          <button
-            type="button"
-            onClick={onOpenMembers}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
-            aria-label="members"
-          >
-            <IconPeople className="h-4 w-4" />
-          </button>
-        ) : null}
         <button
           type="button"
           onClick={() => ingest("manual")}
@@ -155,7 +167,27 @@ export function ChatThread({
         </button>
       </header>
 
-      <div ref={scroller} className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 no-scrollbar md:px-4 md:py-4">
+      {statusText ? (
+        <div className="relative z-10 flex shrink-0 items-start gap-2 border-b border-white/[0.06] bg-white/[0.02] px-3 py-2">
+          <p className="min-w-0 flex-1 text-[12px] leading-5 text-white/55">{statusText}</p>
+          {!ingesting && onDismissStatus ? (
+            <button
+              type="button"
+              onClick={onDismissStatus}
+              className="shrink-0 text-[11px] text-white/35"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        ref={scroller}
+        className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 no-scrollbar md:px-4 md:py-4"
+        {...pullHandlers}
+      >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center px-8 pt-24 text-center">
             {isGroup ? (
@@ -169,13 +201,32 @@ export function ChatThread({
                 <BotMark id={bot?.id} size="lg" />
               </div>
             )}
-            <p className="text-[15px] text-white/55">
+            <p className="text-[15px] leading-6 text-white/55">
               {isGroup
-                ? "Quiet on purpose. We only text when it's actually huge."
+                ? "Quiet on purpose. We only post when it's actually huge."
                 : bot?.id === "pitch"
                   ? "Ask for a live score, the table, or who's kickoff next."
                   : `Ask ${titleCaseName(bot?.name ?? "them")} anything about a story they dropped.`}
             </p>
+            {isGroup ? (
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => ingest("manual")}
+                  disabled={ingesting}
+                  className="rounded-full border border-white/15 px-4 py-2 text-[13px] text-white/70"
+                >
+                  {ingesting ? "Checking…" : "Check now"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenSettings("filters")}
+                  className="rounded-full border border-white/15 px-4 py-2 text-[13px] text-white/70"
+                >
+                  Broaden filters
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {messages.map((message, index) => (
@@ -185,6 +236,7 @@ export function ChatThread({
             prev={messages[index - 1]}
             next={messages[index + 1]}
             isGroup={isGroup}
+            onAskBot={(botId) => selectChat(dmChatId(botId))}
           />
         ))}
         {sending || ingesting ? (
@@ -202,36 +254,47 @@ export function ChatThread({
         {error ? <p className="mt-3 text-center text-xs text-white/45">{error}</p> : null}
       </div>
 
-      <form
-        onSubmit={onSubmit}
-        className="relative z-10 flex shrink-0 items-end gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
-        style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
-      >
-        <textarea
-          ref={composer}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void sendMessage(draft);
-              setDraft("");
-            }
-          }}
-          rows={1}
-          placeholder={isGroup ? "Message the timeline" : `Message ${titleCaseName(bot?.name ?? "them")}`}
-          className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || sending}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
-          style={{ background: draft.trim() ? accent : undefined }}
-          aria-label="send"
+      {!isGroup ? (
+        <form
+          onSubmit={onSubmit}
+          className="relative z-10 flex shrink-0 items-end gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
+          style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
         >
-          <IconSend className="h-4 w-4" />
-        </button>
-      </form>
+          <textarea
+            ref={composer}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void sendMessage(draft);
+                setDraft("");
+              }
+            }}
+            rows={1}
+            placeholder={`Message ${titleCaseName(bot?.name ?? "them")}`}
+            className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || sending}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
+            style={{ background: draft.trim() ? accent : undefined }}
+            aria-label="send"
+          >
+            <IconSend className="h-4 w-4" />
+          </button>
+        </form>
+      ) : (
+        <div
+          className="relative z-10 shrink-0 border-t border-white/[0.06] bg-black/50 px-4 py-3 text-center backdrop-blur-xl"
+          style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
+        >
+          <p className="text-[12px] text-white/35">
+            Tap a story to open the link · Ask a bot in their DM
+          </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -241,11 +304,13 @@ function Row({
   prev,
   next,
   isGroup,
+  onAskBot,
 }: {
   message: ChatMessage;
   prev?: ChatMessage;
   next?: ChatMessage;
   isGroup: boolean;
+  onAskBot: (botId: BotId) => void;
 }) {
   const showDay = !prev || !sameDay(prev.createdAt, message.createdAt);
   const mine = message.sender === "user";
@@ -267,70 +332,15 @@ function Row({
   }
 
   if (message.kind === "news") {
-    const title = message.articleTitle?.trim();
-    const body = message.text.trim();
-    const showTitle = Boolean(title && !sameCopy(title, body));
-    const sourceLabel =
-      message.sources && message.sources.length > 1
-        ? `${message.sources[0]} +${message.sources.length - 1}`
-        : message.sources?.[0] || "source";
-    const flash =
-      message.flash === "now" ? "breaking" : message.flash === "soon" ? "upcoming" : null;
-
     return (
-      <article className="message-block mt-6 border-b border-white/[0.05] pb-6 last:mb-0 last:border-b-0 last:pb-0">
-        {showDay ? <DayChip ts={message.createdAt} /> : null}
-        {showGap ? <MessageGap /> : null}
-        <div className="flex gap-3">
-          <span className="mt-0.5 shrink-0">
-            <BotMark id={author?.id} size="sm" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              {isGroup ? (
-                <span className="text-[13px] font-semibold" style={{ color: author?.color }}>
-                  {titleCaseName(author?.name ?? "")}
-                </span>
-              ) : null}
-              {flash ? (
-                <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
-                  {flash}
-                </span>
-              ) : null}
-              <span className="text-[11px] text-white/30">{clock(message.createdAt)}</span>
-            </header>
-            <div
-              className="overflow-hidden rounded-[14px] border border-white/[0.08]"
-              style={{
-                background: author?.bubble ?? "#1a1418",
-                boxShadow: `inset 3px 0 0 ${author?.color ?? "rgba(255,255,255,0.35)"}`,
-              }}
-            >
-              <div className="px-4 py-3.5 text-[15px] leading-[1.52] text-[#f4f4f5]">
-                <p className="whitespace-pre-wrap">{body}</p>
-              </div>
-              {message.articleUrl ? (
-                <a
-                  href={message.articleUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block border-t border-white/[0.08] bg-black/30 px-4 py-3 transition hover:bg-black/40"
-                >
-                  <span className="block truncate text-[11px] font-medium text-white/40">
-                    {sourceLabel}
-                    {message.matchedKeywords?.[0] ? ` · ${message.matchedKeywords[0]}` : ""}
-                  </span>
-                  {showTitle ? (
-                    <span className="mt-1.5 block text-[13px] font-medium leading-snug text-white/92">
-                      {title}
-                    </span>
-                  ) : null}
-                </a>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </article>
+      <NewsCard
+        message={message}
+        author={author ?? undefined}
+        isGroup={isGroup}
+        showDay={showDay}
+        showGap={Boolean(showGap)}
+        onAskBot={onAskBot}
+      />
     );
   }
 
@@ -378,6 +388,130 @@ function Row({
         </div>
       </div>
     </div>
+  );
+}
+
+function NewsCard({
+  message,
+  author,
+  isGroup,
+  showDay,
+  showGap,
+  onAskBot,
+}: {
+  message: ChatMessage;
+  author: ReturnType<typeof getBot> | undefined;
+  isGroup: boolean;
+  showDay: boolean;
+  showGap: boolean;
+  onAskBot: (botId: BotId) => void;
+}) {
+  const [whyOpen, setWhyOpen] = useState(false);
+  const title = message.articleTitle?.trim();
+  const body = message.text.trim();
+  const showTitle = Boolean(title && !sameCopy(title, body));
+  const sourceLabel =
+    message.sources && message.sources.length > 1
+      ? `${message.sources[0]} +${message.sources.length - 1}`
+      : message.sources?.[0] || "source";
+  const flash =
+    message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
+  const keywords = message.matchedKeywords ?? [];
+  const botId = author?.id;
+
+  return (
+    <article className="message-block mt-6 border-b border-white/[0.05] pb-6 last:mb-0 last:border-b-0 last:pb-0">
+      {showDay ? <DayChip ts={message.createdAt} /> : null}
+      {showGap ? <MessageGap /> : null}
+      <div className="flex gap-3">
+        <span className="mt-0.5 shrink-0">
+          <BotMark id={author?.id} size="sm" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            {isGroup ? (
+              <span className="text-[13px] font-semibold" style={{ color: author?.color }}>
+                {titleCaseName(author?.name ?? "")}
+              </span>
+            ) : null}
+            {flash ? (
+              <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+                {flash}
+              </span>
+            ) : null}
+            <span className="text-[11px] text-white/30">{clock(message.createdAt)}</span>
+          </header>
+          <div
+            className="overflow-hidden rounded-[14px] border border-white/[0.08]"
+            style={{
+              background: author?.bubble ?? "#1a1418",
+              boxShadow: `inset 3px 0 0 ${author?.color ?? "rgba(255,255,255,0.35)"}`,
+            }}
+          >
+            <div className="px-4 py-3.5 text-[15px] leading-[1.52] text-[#f4f4f5]">
+              <p className="whitespace-pre-wrap">{body}</p>
+            </div>
+            {message.articleUrl ? (
+              <a
+                href={message.articleUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block border-t border-white/[0.08] bg-black/30 px-4 py-3 transition hover:bg-black/40"
+              >
+                <span className="block truncate text-[11px] font-medium text-white/40">
+                  {sourceLabel}
+                </span>
+                {showTitle ? (
+                  <span className="mt-1.5 block text-[13px] font-medium leading-snug text-white/92">
+                    {title}
+                  </span>
+                ) : null}
+              </a>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {keywords.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setWhyOpen((open) => !open)}
+                className="text-[11px] text-white/35 underline-offset-2 hover:text-white/50 hover:underline"
+              >
+                {whyOpen ? "Hide" : "Why this story?"}
+              </button>
+            ) : null}
+            {isGroup && botId ? (
+              <button
+                type="button"
+                onClick={() => onAskBot(botId)}
+                className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-white/50"
+              >
+                Ask {titleCaseName(author?.name ?? "")}
+              </button>
+            ) : null}
+          </div>
+          {whyOpen && keywords.length > 0 ? (
+            <div className="mt-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <p className="text-[11px] font-medium text-white/40">Matched your filters</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {keywords.map((word) => (
+                  <span
+                    key={word}
+                    className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/60"
+                  >
+                    {word}
+                  </span>
+                ))}
+              </div>
+              {message.sources && message.sources.length > 0 ? (
+                <p className="mt-2 text-[11px] text-white/30">
+                  Sources: {message.sources.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 

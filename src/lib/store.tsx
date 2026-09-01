@@ -53,6 +53,8 @@ import type {
   Chat,
   ChatMessage,
   IngestItem,
+  IngestResult,
+  IngestStats,
   MessageKind,
   NotificationPrefs,
   Preferences,
@@ -82,18 +84,24 @@ type StoreValue = {
   ingesting: boolean;
   sending: boolean;
   error: string | null;
+  lastIngestResult: IngestResult | null;
   selectChat: (id: string | null) => void;
-  completeOnboarding: (bots: BotId[], preferences?: Preferences) => Promise<void>;
+  completeOnboarding: (
+    bots: BotId[],
+    preferences?: Preferences,
+    notifications?: NotificationPrefs,
+  ) => Promise<IngestResult | null>;
   toggleBot: (botId: BotId, enabled: boolean) => Promise<void>;
   ingest: (
     reason?: "open" | "manual" | "member",
     bots?: BotId[],
     prefs?: Preferences,
-  ) => Promise<number>;
+  ) => Promise<IngestResult | null>;
   sendMessage: (text: string) => Promise<void>;
   enablePush: () => Promise<boolean>;
   savePreferences: (next: Preferences) => Promise<void>;
   saveNotifications: (next: NotificationPrefs) => Promise<void>;
+  dismissIngestBanner: () => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -243,6 +251,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ingesting, setIngesting] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastIngestResult, setLastIngestResult] = useState<IngestResult | null>(null);
   const selectedRef = useRef<string | null>(null);
   const ingestingRef = useRef(false);
   const lastNewsRef = useRef<Record<string, { title: string; text: string }>>({});
@@ -768,13 +777,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reason: "open" | "manual" | "member" = "manual",
       bots?: BotId[],
       prefs?: Preferences,
-    ) => {
-      if (ingestingRef.current) return 0;
+    ): Promise<IngestResult | null> => {
+      if (ingestingRef.current) return null;
       const enabled = bots ?? profile?.enabledBots ?? [];
-      if (enabled.length === 0) return 0;
+      if (enabled.length === 0) return null;
       ingestingRef.current = true;
       setIngesting(true);
       setError(null);
+      const emptyStats: IngestStats = {
+        headlinesChecked: 0,
+        keywordMatched: 0,
+        gatePassed: 0,
+        posted: 0,
+        skippedDuplicate: 0,
+      };
       try {
         await pruneExpired();
         const seen = await loadSeen();
@@ -792,14 +808,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }),
         });
         if (!response.ok) throw new Error("ingest failed");
-        const data = (await response.json()) as { items?: IngestItem[] };
+        const data = (await response.json()) as {
+          items?: IngestItem[];
+          stats?: IngestStats;
+        };
+        const apiStats = data.stats ?? emptyStats;
         const posted: IngestItem[] = [];
+        let skippedDuplicate = 0;
         for (const item of data.items ?? []) {
           if (
             item.botId !== "pitch" &&
             isDuplicateTitle(item.title, [...seen.titles, ...posted.map((row) => row.title)])
           ) {
             await markSeen(item.url, item.botId, item.title);
+            skippedDuplicate += 1;
             continue;
           }
           await ensureDm(item.botId);
@@ -850,11 +872,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         await touchLastIngest();
-        return posted.length;
+        const result: IngestResult = {
+          stats: {
+            ...apiStats,
+            posted: posted.length,
+            skippedDuplicate,
+          },
+          postedBotIds: posted.map((item) => item.botId),
+        };
+        if (reason === "manual" || reason === "member") {
+          setLastIngestResult(result);
+        }
+        return result;
       } catch (err) {
         console.error(err);
         setError("Couldn't grab the news. Check your wifi and try again.");
-        return 0;
+        return null;
       } finally {
         ingestingRef.current = false;
         setIngesting(false);
@@ -863,11 +896,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [addMessage, ensureDm, loadSeen, markSeen, profile, pruneExpired, touchLastIngest],
   );
 
+  const dismissIngestBanner = useCallback(() => {
+    setLastIngestResult(null);
+  }, []);
+
   const completeOnboarding = useCallback(
-    async (bots: BotId[], preferences?: Preferences) => {
+    async (
+      bots: BotId[],
+      preferences?: Preferences,
+      notifications?: NotificationPrefs,
+    ): Promise<IngestResult | null> => {
       const unique = [...new Set(bots)];
       const nextPrefs = prunePreferences(
         normalizePreferences(preferences ?? profile?.preferences),
+      );
+      const nextNotifications = normalizeNotificationPrefs(
+        notifications ?? profile?.notifications,
       );
       for (const botId of unique) {
         await ensureDm(botId);
@@ -887,9 +931,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         onboarded: true,
         createdAt: profile?.createdAt ?? Date.now(),
         preferences: nextPrefs,
-        notifications: profile?.notifications ?? defaultNotificationPrefs(),
+        notifications: nextNotifications,
       });
-      await ingest("open", unique, nextPrefs);
+      const result = await ingest("manual", unique, nextPrefs);
+      if (result) setLastIngestResult(result);
+      return result;
     },
     [addMessage, ensureDm, ingest, profile, saveProfile],
   );
@@ -947,6 +993,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const trimmed = text.trim();
       if (!trimmed || !selectedChatId) return;
       const chat = chats.find((item) => item.id === selectedChatId);
+      if (chat?.type === "group" || selectedChatId === GROUP_CHAT_ID) return;
       const botId =
         chat?.type === "dm" && chat.botId
           ? chat.botId
@@ -1088,6 +1135,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ingesting,
       sending,
       error,
+      lastIngestResult,
       selectChat,
       completeOnboarding,
       toggleBot,
@@ -1096,6 +1144,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       enablePush,
       savePreferences,
       saveNotifications,
+      dismissIngestBanner,
     };
     },
     [
@@ -1109,6 +1158,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ingesting,
       sending,
       error,
+      lastIngestResult,
       selectChat,
       completeOnboarding,
       toggleBot,
@@ -1117,6 +1167,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       enablePush,
       savePreferences,
       saveNotifications,
+      dismissIngestBanner,
     ],
   );
 

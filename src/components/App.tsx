@@ -3,12 +3,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BOT_IDS } from "@/lib/types";
 import { useStore } from "@/lib/store";
+import { ingestStatusText } from "@/lib/ingest-feedback";
 import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";
-import { MembersSheet } from "./MembersSheet";
-import { NotificationsScreen } from "./NotificationsScreen";
 import { Onboarding } from "./Onboarding";
-import { PreferencesScreen } from "./Preferences";
+import { SettingsScreen } from "./SettingsScreen";
 
 function isIos() {
   if (typeof navigator === "undefined") return false;
@@ -32,11 +31,21 @@ function useShowIosInstall() {
 }
 
 export function App() {
-  const { ready, profile, selectedChatId, selectChat, ingest, savePreferences, saveNotifications, enablePush } =
-    useStore();
-  const [membersOpen, setMembersOpen] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
-  const [notifyOpen, setNotifyOpen] = useState(false);
+  const {
+    ready,
+    profile,
+    selectedChatId,
+    selectChat,
+    ingest,
+    savePreferences,
+    saveNotifications,
+    enablePush,
+    lastIngestResult,
+    dismissIngestBanner,
+    ingesting,
+  } = useStore();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"alerts" | "filters" | "bots">("alerts");
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [notifySaving, setNotifySaving] = useState(false);
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -82,9 +91,14 @@ export function App() {
   }
 
   const prefBots =
-    profile.enabledBots.length > 0
-      ? profile.enabledBots
-      : BOT_IDS;
+    profile.enabledBots.length > 0 ? profile.enabledBots : [...BOT_IDS];
+
+  const statusText = ingestStatusText(lastIngestResult, ingesting);
+
+  function openSettings(tab: "alerts" | "filters" | "bots" = "alerts") {
+    setSettingsTab(tab);
+    setSettingsOpen(true);
+  }
 
   return (
     <div className="app-shell relative mx-auto w-full bg-black md:grid md:max-w-5xl md:grid-cols-[280px_1fr]">
@@ -92,9 +106,9 @@ export function App() {
         className={`h-full min-h-0 ${selectedChatId ? "hidden md:block" : "block"}`}
       >
         <ChatList
-          onOpenMembers={() => setMembersOpen(true)}
-          onOpenPrefs={() => setPrefsOpen(true)}
-          onOpenNotifications={() => setNotifyOpen(true)}
+          onOpenSettings={() => openSettings("alerts")}
+          statusText={statusText}
+          onDismissStatus={dismissIngestBanner}
         />
       </div>
       <div
@@ -102,8 +116,9 @@ export function App() {
       >
         {selectedChatId ? (
           <ChatThread
-            onOpenMembers={() => setMembersOpen(true)}
-            onOpenPrefs={() => setPrefsOpen(true)}
+            onOpenSettings={openSettings}
+            statusText={statusText}
+            onDismissStatus={dismissIngestBanner}
           />
         ) : (
           <div className="chat-bg hidden h-full place-items-center px-8 text-center md:grid">
@@ -113,36 +128,31 @@ export function App() {
           </div>
         )}
       </div>
-      <MembersSheet open={membersOpen} onClose={() => setMembersOpen(false)} />
-      <PreferencesScreen
-        open={prefsOpen}
-        botIds={[...prefBots]}
-        initial={profile.preferences}
-        saving={prefsSaving}
-        onClose={() => setPrefsOpen(false)}
-        onSave={async (next) => {
+      <SettingsScreen
+        open={settingsOpen}
+        enabledBots={profile.enabledBots}
+        initialPrefs={profile.preferences}
+        initialNotifications={profile.notifications}
+        pushEnabled={profile.pushEnabled}
+        prefsSaving={prefsSaving}
+        notifySaving={notifySaving}
+        initialTab={settingsTab}
+        onClose={() => setSettingsOpen(false)}
+        onEnablePush={enablePush}
+        onSavePrefs={async (next) => {
           setPrefsSaving(true);
           try {
             await savePreferences(next);
-            setPrefsOpen(false);
+            setSettingsOpen(false);
           } finally {
             setPrefsSaving(false);
           }
         }}
-      />
-      <NotificationsScreen
-        open={notifyOpen}
-        enabledBots={profile.enabledBots}
-        initial={profile.notifications}
-        pushEnabled={profile.pushEnabled}
-        saving={notifySaving}
-        onClose={() => setNotifyOpen(false)}
-        onEnablePush={enablePush}
-        onSave={async (next) => {
+        onSaveNotifications={async (next) => {
           setNotifySaving(true);
           try {
             await saveNotifications(next);
-            setNotifyOpen(false);
+            setSettingsOpen(false);
           } finally {
             setNotifySaving(false);
           }

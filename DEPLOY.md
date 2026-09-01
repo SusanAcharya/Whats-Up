@@ -87,7 +87,7 @@ iOS **16.4+** is required for web push on installed PWAs.
 ## Turn on notifications
 
 1. Open **What's Up** from the home screen icon.
-2. Complete onboarding (pick bots → set filters → **save preferences**).
+2. Complete onboarding (pick bots → set filters → **notifications** → start).
 3. When iOS asks **Allow Notifications**, tap **Allow**.
 
 Onboarding calls `enablePush()`, which:
@@ -96,7 +96,7 @@ Onboarding calls `enablePush()`, which:
 - Subscribes with your **VAPID public key**.
 - Saves the subscription to Firestore under `users/{uid}/push/current`.
 
-When **refresh** finds new stories and `pushEnabled` is true, the app sends a push via the server action (one notification per refresh batch).
+When new stories post, each bot sends a **DM-style push** (if alerts are on for that bot). Timeline alerts are off by default.
 
 ### If notifications never appear
 
@@ -117,6 +117,21 @@ When **refresh** finds new stories and `pushEnabled` is true, the app sends a pu
 3. Allow notifications when prompted during onboarding.
 
 Android web push generally works in Chrome without a separate “installed PWA” step, but installing still gives a better full-screen experience.
+
+---
+
+## Background ingest (Vercel Cron)
+
+Push notifications work best when the app is closed. A cron job runs every 15 minutes on Vercel to check headlines and send pushes for all onboarded users.
+
+### Setup
+
+1. In Firebase Console → Project settings → Service accounts → **Generate new private key**.
+2. Copy the entire JSON into a Vercel env var **`FIREBASE_SERVICE_ACCOUNT_JSON`** (paste as one line).
+3. Add **`CRON_SECRET`** — any long random string (e.g. `openssl rand -hex 32`).
+4. Redeploy. Vercel automatically calls `/api/cron/ingest` on the schedule in `vercel.json`.
+
+Without these vars, the app still works — client refresh + 15-minute interval while open handles ingest. Cron is optional but recommended for real lock-screen alerts.
 
 ---
 

@@ -101,3 +101,16 @@ export type PushPayload = {
   body: string;
   url?: string;
 };
+
+export type IngestStats = {
+  headlinesChecked: number;
+  keywordMatched: number;
+  gatePassed: number;
+  posted: number;
+  skippedDuplicate: number;
+};
+
+export type IngestResult = {
+  stats: IngestStats;
+  postedBotIds: BotId[];
+};

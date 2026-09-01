@@ -29,9 +29,14 @@ export async function POST(request: Request) {
       return Response.json({ items: [] });
     }
 
-    const stories = await collectFlashes(bots as BotId[], seenUrls, seenTitles, preferences);
+    const { stories, stats } = await collectFlashes(
+      bots as BotId[],
+      seenUrls,
+      seenTitles,
+      preferences,
+    );
     const items = await summarizeFlashes(stories);
-    return Response.json({ items });
+    return Response.json({ items, stats });
   } catch (error) {
     console.error("ingest failed", error);
     return Response.json(
