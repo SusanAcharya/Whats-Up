@@ -182,7 +182,7 @@ export function ChatList({
       </div>
 
       <p className="relative z-10 shrink-0 border-t border-white/[0.06] px-4 py-2.5 text-center text-[10px] text-white/30 md:px-5 md:py-3 md:text-[11px]">
-        {backend === "local" ? "This phone only." : "Synced · background checks every 15 min"}
+        {backend === "local" ? "This phone only." : "Synced · checks when you open the app"}
       </p>
     </div>
   );

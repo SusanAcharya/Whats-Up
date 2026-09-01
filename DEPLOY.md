@@ -120,18 +120,26 @@ Android web push generally works in Chrome without a separate “installed PWA�
 
 ---
 
-## Background ingest (Vercel Cron)
+## Background ingest (Vercel Cron — optional)
 
-Push notifications work best when the app is closed. A cron job runs every 15 minutes on Vercel to check headlines and send pushes for all onboarded users.
+**Vercel Hobby (free):** cron jobs can run **once per day** only. This project uses `0 9 * * *` — a daily headline check at **09:00 UTC** (~morning briefing). That fits the free tier.
 
-### Setup
+**While the app is open:** the client still refreshes on launch and every 15 minutes in the background tab — no cron needed for that.
 
-1. In Firebase Console → Project settings → Service accounts → **Generate new private key**.
-2. Copy the entire JSON into a Vercel env var **`FIREBASE_SERVICE_ACCOUNT_JSON`** (paste as one line).
-3. Add **`CRON_SECRET`** — any long random string (e.g. `openssl rand -hex 32`).
-4. Redeploy. Vercel automatically calls `/api/cron/ingest` on the schedule in `vercel.json`.
+**Vercel Pro:** you can change `vercel.json` to run more often (e.g. `*/15 * * * *`).
 
-Without these vars, the app still works — client refresh + 15-minute interval while open handles ingest. Cron is optional but recommended for real lock-screen alerts.
+### Setup (optional)
+
+1. Firebase Console → Project settings → Service accounts → **Generate new private key**.
+2. Vercel env var **`FIREBASE_SERVICE_ACCOUNT_JSON`** — paste the full JSON as one line.
+3. **`CRON_SECRET`** — any long random string (`openssl rand -hex 32`). Vercel sends this as `Authorization: Bearer …` when invoking the cron.
+4. Redeploy.
+
+Without those vars, deploy still succeeds. The daily cron runs but skips server ingest (`firebase admin not configured`). Push on refresh / while app is open still works via the client.
+
+### Disable cron entirely
+
+Delete `vercel.json` or remove the `crons` array if you do not want daily server checks.
 
 ---
 

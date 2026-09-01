@@ -41,7 +41,7 @@ After setup you'll land in the first bot's DM with a refresh status banner.
 | Why this story? | On any news card → expand matched keywords |
 | Ask a bot | On timeline cards → **Ask Techie** (etc.) |
 | Push | Allow notifications in onboarding or Settings → Alerts |
-| Background push | Set `CRON_SECRET` + `FIREBASE_SERVICE_ACCOUNT_JSON` on Vercel |
+| Background push | Optional: daily cron on Vercel Hobby (see DEPLOY.md) |
 
 News from RSS (Google News, BBC, ESPN, The Verge, …). Summaries via Groq → OpenRouter fallback.
 
