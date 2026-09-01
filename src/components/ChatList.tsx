@@ -86,6 +86,7 @@ export function ChatList({
     if (chat.type !== "dm") return true;
     return chat.botId ? profile?.enabledBots.includes(chat.botId) : false;
   });
+  const unreadTotal = visible.reduce((sum, chat) => sum + chat.unread, 0);
   const group = visible.filter((chat) => chat.id === GROUP_CHAT_ID);
   const dms = visible.filter((chat) => chat.id !== GROUP_CHAT_ID);
 
@@ -103,6 +104,7 @@ export function ChatList({
         </h1>
         <p className="mt-1.5 text-[11px] text-[var(--muted)] md:mt-2 md:text-[12px]">
           {members} {members === 1 ? "bot" : "bots"} enabled
+          {unreadTotal > 0 ? ` · ${unreadTotal} unread` : ""}
         </p>
 
         <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl border border-white/[0.08] bg-black/30 md:mt-4 md:rounded-2xl">

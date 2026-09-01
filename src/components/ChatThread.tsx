@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { GROUP_CHAT_ID, dmChatId, getBot, hexAlpha } from "@/lib/bots";
+import { GROUP_CHAT_ID, getBot, hexAlpha } from "@/lib/bots";
 import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
@@ -45,32 +45,45 @@ function grow(el: HTMLTextAreaElement | null) {
 }
 
 function usePullToRefresh(onRefresh: () => void, enabled: boolean) {
+  const [pull, setPull] = useState(0);
   const startY = useRef(0);
-  const pulling = useRef(false);
+  const triggered = useRef(false);
 
   function onTouchStart(event: React.TouchEvent) {
     if (!enabled) return;
     const el = event.currentTarget as HTMLElement;
     if (el.scrollTop <= 0) {
       startY.current = event.touches[0].clientY;
-      pulling.current = true;
+      triggered.current = false;
     }
   }
 
   function onTouchMove(event: React.TouchEvent) {
-    if (!pulling.current) return;
-    const delta = event.touches[0].clientY - startY.current;
-    if (delta < 80) return;
-    pulling.current = false;
-    onRefresh();
+    if (!enabled) return;
+    const el = event.currentTarget as HTMLElement;
+    if (el.scrollTop > 0) {
+      setPull(0);
+      return;
+    }
+    const delta = Math.max(0, event.touches[0].clientY - startY.current);
+    const clamped = Math.min(delta, 80);
+    setPull(clamped);
+    if (clamped >= 72 && !triggered.current) {
+      triggered.current = true;
+      setPull(0);
+      onRefresh();
+    }
   }
 
   function onTouchEnd() {
-    pulling.current = false;
+    setPull(0);
+    triggered.current = false;
   }
 
-  return { onTouchStart, onTouchMove, onTouchEnd };
+  return { pull, handlers: { onTouchStart, onTouchMove, onTouchEnd } };
 }
+
+const QUICK_REPLIES = ["Why does this matter?", "Explain simply", "What happens next?"];
 
 export function ChatThread({
   onOpenSettings,
@@ -92,30 +105,30 @@ export function ChatThread({
     ingest,
     error,
     profile,
+    askBot,
+    composerSeed,
+    clearComposerSeed,
   } = useStore();
-  const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
-  const composer = useRef<HTMLTextAreaElement>(null);
   const chat = chats.find((item) => item.id === selectedChatId);
   const bot = chat?.type === "dm" ? getBot(chat.botId ?? "") : undefined;
   const isGroup = selectedChatId === GROUP_CHAT_ID;
   const memberBots = (profile?.enabledBots ?? []).map(getBot).filter(Boolean);
   const accent = isGroup ? "#fb923c" : (bot?.color ?? "#fff7ed");
+  const seedText =
+    composerSeed?.chatId === selectedChatId ? composerSeed.text : undefined;
 
-  const pullHandlers = usePullToRefresh(() => ingest("manual"), !ingesting);
+  const { pull, handlers: pullHandlers } = usePullToRefresh(() => ingest("manual"), !ingesting);
+
+  const lastBotNews = !isGroup
+    ? [...messages].reverse().find((row) => row.kind === "news" && row.sender !== "user")
+    : undefined;
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, sending, ingesting]);
 
-  useEffect(() => {
-    grow(composer.current);
-  }, [draft]);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = draft;
-    setDraft("");
+  async function onSubmit(text: string) {
     await sendMessage(text);
   }
 
@@ -196,6 +209,14 @@ export function ChatThread({
         className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 no-scrollbar md:px-4 md:py-4"
         {...pullHandlers}
       >
+        {pull > 8 ? (
+          <div
+            className="flex justify-center pb-2 text-[11px] text-white/40 transition-opacity"
+            style={{ opacity: Math.min(pull / 72, 1) }}
+          >
+            {pull >= 72 ? "Release to refresh" : "Pull to refresh"}
+          </div>
+        ) : null}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center px-8 pt-24 text-center">
             {isGroup ? (
@@ -244,7 +265,10 @@ export function ChatThread({
             prev={messages[index - 1]}
             next={messages[index + 1]}
             isGroup={isGroup}
-            onAskBot={(botId) => selectChat(dmChatId(botId))}
+            onAskBot={(botId, message) => {
+              const snippet = message.text.slice(0, 120).trim();
+              askBot(botId, `What's the deal with this story? ${snippet}`);
+            }}
           />
         ))}
         {sending || ingesting ? (
@@ -263,36 +287,16 @@ export function ChatThread({
       </div>
 
       {!isGroup ? (
-        <form
+        <DmComposer
+          key={`${selectedChatId ?? "none"}-${seedText ?? ""}`}
+          accent={accent}
+          botName={titleCaseName(bot?.name ?? "them")}
+          initialDraft={seedText ?? ""}
+          lastBotNews={Boolean(lastBotNews)}
+          sending={sending}
           onSubmit={onSubmit}
-          className="relative z-10 flex shrink-0 items-end gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
-          style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
-        >
-          <textarea
-            ref={composer}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void sendMessage(draft);
-                setDraft("");
-              }
-            }}
-            rows={1}
-            placeholder={`Message ${titleCaseName(bot?.name ?? "them")}`}
-            className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
-          />
-          <button
-            type="submit"
-            disabled={!draft.trim() || sending}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
-            style={{ background: draft.trim() ? accent : undefined }}
-            aria-label="send"
-          >
-            <IconSend className="h-4 w-4" />
-          </button>
-        </form>
+          onSeedConsumed={clearComposerSeed}
+        />
       ) : (
         <div
           className="relative z-10 shrink-0 border-t border-white/[0.06] bg-black/50 px-4 py-3 text-center backdrop-blur-xl"
@@ -307,6 +311,98 @@ export function ChatThread({
   );
 }
 
+function DmComposer({
+  accent,
+  botName,
+  initialDraft,
+  lastBotNews,
+  sending,
+  onSubmit,
+  onSeedConsumed,
+}: {
+  accent: string;
+  botName: string;
+  initialDraft: string;
+  lastBotNews: boolean;
+  sending: boolean;
+  onSubmit: (text: string) => Promise<void>;
+  onSeedConsumed: () => void;
+}) {
+  const [draft, setDraft] = useState(initialDraft);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const showQuickReplies = lastBotNews && !draft.trim();
+
+  useEffect(() => {
+    if (initialDraft) onSeedConsumed();
+    grow(composer.current);
+    if (initialDraft) composer.current?.focus();
+  }, [initialDraft, onSeedConsumed]);
+
+  useEffect(() => {
+    grow(composer.current);
+  }, [draft]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    await onSubmit(text);
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="relative z-10 flex shrink-0 flex-col gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
+      style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
+    >
+      {showQuickReplies ? (
+        <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+          {QUICK_REPLIES.map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => {
+                setDraft(label);
+                composer.current?.focus();
+              }}
+              className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] text-white/55"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={composer}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void onSubmit(draft.trim());
+              setDraft("");
+            }
+          }}
+          rows={1}
+          placeholder={`Message ${botName}`}
+          className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim() || sending}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
+          style={{ background: draft.trim() ? accent : undefined }}
+          aria-label="send"
+        >
+          <IconSend className="h-4 w-4" />
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function Row({
   message,
   prev,
@@ -318,7 +414,7 @@ function Row({
   prev?: ChatMessage;
   next?: ChatMessage;
   isGroup: boolean;
-  onAskBot: (botId: BotId) => void;
+  onAskBot: (botId: BotId, message: ChatMessage) => void;
 }) {
   const showDay = !prev || !sameDay(prev.createdAt, message.createdAt);
   const mine = message.sender === "user";
@@ -412,7 +508,7 @@ function NewsCard({
   isGroup: boolean;
   showDay: boolean;
   showGap: boolean;
-  onAskBot: (botId: BotId) => void;
+  onAskBot: (botId: BotId, message: ChatMessage) => void;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const title = message.articleTitle?.trim();
@@ -490,7 +586,7 @@ function NewsCard({
             {isGroup && botId ? (
               <button
                 type="button"
-                onClick={() => onAskBot(botId)}
+                onClick={() => onAskBot(botId, message)}
                 className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-white/50"
               >
                 Ask {titleCaseName(author?.name ?? "")}

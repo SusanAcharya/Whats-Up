@@ -125,8 +125,16 @@ function SettingsPanel({
     normalizeNotificationPrefs(initialNotifications),
   );
   const [pushBusy, setPushBusy] = useState(false);
+  const [botToast, setBotToast] = useState<string | null>(null);
 
   const prefBots = enabledBots.length > 0 ? enabledBots : profile?.enabledBots ?? [];
+
+  async function handleBotToggle(id: BotId, on: boolean) {
+    const bot = getBot(id);
+    await toggleBot(id, !on);
+    setBotToast(`${!on ? "Added" : "Removed"} ${titleCaseName(bot?.name ?? id)}`);
+    window.setTimeout(() => setBotToast(null), 2000);
+  }
 
   function setBotNotify(id: BotId, value: boolean) {
     setNotifyDraft((current) => ({
@@ -182,6 +190,11 @@ function SettingsPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 no-scrollbar">
+        {botToast ? (
+          <p className="mb-3 rounded-xl bg-white/[0.06] px-3 py-2 text-center text-[13px] text-white/70">
+            {botToast}
+          </p>
+        ) : null}
         {tab === "alerts" ? (
           <>
             <p className="text-[14px] leading-6 text-[var(--muted)]">
@@ -308,7 +321,7 @@ function SettingsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleBot(bot.id as BotId, !on)}
+                      onClick={() => handleBotToggle(bot.id as BotId, on)}
                       className="h-8 w-12 shrink-0 rounded-full p-0.5"
                       style={{ background: on ? bot.color : "#2a2a2a" }}
                       aria-label={`${on ? "Remove" : "Add"} ${bot.name}`}

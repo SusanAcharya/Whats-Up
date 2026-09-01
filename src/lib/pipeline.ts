@@ -44,7 +44,7 @@ async function pitchFlashes(pref: BotPref, seen: Set<string>): Promise<FlashStor
       publishedAt: match.status === "pre" ? match.start : Date.now(),
       imageUrl: match.logo,
       score: match.status === "in" ? 40 : 20,
-      matchedKeywords: [match.league, match.home.short, match.away.short],
+      matchedKeywords: [match.league, `${match.home.short} vs ${match.away.short}`],
       sources: ["ESPN"],
       flash,
       relevance: 90,
@@ -146,7 +146,9 @@ export async function collectFlashes(
     }),
   );
 
-  const clustered = clusterStories(collected.flat());
+  const flat = collected.flat();
+  const pitchStories = flat.filter((story) => story.botId === "pitch");
+  const clustered = [...clusterStories(flat.filter((story) => story.botId !== "pitch")), ...pitchStories];
   const gated = clustered.filter((story) => {
     if (story.botId === "pitch") return true;
     const pass = passesGate(story);

@@ -7,7 +7,7 @@ export function ingestStatusText(result: IngestResult | null, ingesting: boolean
   if (!result) return null;
 
   const { stats, postedBotIds } = result;
-  const { headlinesChecked, keywordMatched, gatePassed, posted } = stats;
+  const { headlinesChecked, keywordMatched, posted } = stats;
 
   if (posted > 0) {
     const names = postedBotIds
@@ -17,13 +17,10 @@ export function ingestStatusText(result: IngestResult | null, ingesting: boolean
   }
 
   if (headlinesChecked === 0) {
-    return "No feeds to check. Add filters or enable a bot.";
+    return "No feeds to check. Enable a bot or add filters in Settings.";
   }
   if (keywordMatched === 0) {
-    return `Checked ${headlinesChecked} headlines · nothing matched your filters.`;
+    return `Checked ${headlinesChecked} headlines · nothing matched your filters yet.`;
   }
-  if (gatePassed === 0) {
-    return `Checked ${headlinesChecked} headlines · ${keywordMatched} matched but none passed quality check.`;
-  }
-  return `Checked ${headlinesChecked} headlines · quiet for now. We only post when it's huge.`;
+  return `Checked ${headlinesChecked} headlines · quiet for now. We only post when it's actually huge.`;
 }

@@ -102,6 +102,9 @@ type StoreValue = {
   savePreferences: (next: Preferences) => Promise<void>;
   saveNotifications: (next: NotificationPrefs) => Promise<void>;
   dismissIngestBanner: () => void;
+  askBot: (botId: BotId, draft?: string) => void;
+  clearComposerSeed: () => void;
+  composerSeed: { chatId: string; text: string } | null;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -252,6 +255,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastIngestResult, setLastIngestResult] = useState<IngestResult | null>(null);
+  const [composerSeed, setComposerSeed] = useState<{ chatId: string; text: string } | null>(null);
   const selectedRef = useRef<string | null>(null);
   const ingestingRef = useRef(false);
   const skipNextOpenIngestRef = useRef(false);
@@ -909,6 +913,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setLastIngestResult(null);
   }, []);
 
+  const clearComposerSeed = useCallback(() => {
+    setComposerSeed(null);
+  }, []);
+
+  const askBot = useCallback(
+    (botId: BotId, draft?: string) => {
+      const chatId = dmChatId(botId);
+      setComposerSeed({ chatId, text: draft ?? "What's the deal with this story?" });
+      setSelectedChatId(chatId);
+      if (!uid) return;
+      if (backend === "local") {
+        const local = localRef.current ?? readLocal();
+        persistLocal({
+          ...local,
+          chats: local.chats.map((chat) =>
+            chat.id === chatId ? { ...chat, unread: 0 } : chat,
+          ),
+        });
+        return;
+      }
+      if (!db) return;
+      void updateDoc(doc(db, "users", uid, "chats", chatId), { unread: 0 }).catch(() => undefined);
+    },
+    [backend, persistLocal, uid],
+  );
+
   const completeOnboarding = useCallback(
     async (
       bots: BotId[],
@@ -1162,6 +1192,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       savePreferences,
       saveNotifications,
       dismissIngestBanner,
+      askBot,
+      clearComposerSeed,
+      composerSeed,
     };
     },
     [
@@ -1176,6 +1209,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sending,
       error,
       lastIngestResult,
+      composerSeed,
       selectChat,
       completeOnboarding,
       toggleBot,
@@ -1185,6 +1219,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       savePreferences,
       saveNotifications,
       dismissIngestBanner,
+      askBot,
+      clearComposerSeed,
     ],
   );
 
