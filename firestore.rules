@@ -1,0 +1,306 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: Firebase Auth uid
+    // Fields:
+    //   - displayName: string (required, 1-40) - shown as "you"
+    //   - enabledBots: list<string> (required, max 8) - bot ids
+    //   - onboarded: bool (required)
+    //   - createdAt: timestamp (required, immutable)
+    //   - lastIngestAt: timestamp (optional)
+    //   - pushEnabled: bool (optional)
+    //   - preferences: map (optional) per-bot sports/leagues/teams/topics/keywords
+    //
+    // Collection: users/{userId}/chats
+    // Document ID: 'group' or 'dm-{botId}'
+    // Fields:
+    //   - type: string (required, 'group' | 'dm')
+    //   - botId: string (optional, 1-40)
+    //   - title: string (required, 1-80)
+    //   - lastMessage: string (required, 0-400)
+    //   - lastMessageAt: timestamp (required)
+    //   - unread: number (required, >= 0, <= 9999)
+    //
+    // Collection: users/{userId}/chats/{chatId}/messages
+    // Document ID: auto-id
+    // Fields:
+    //   - sender: string (required, 1-40) - 'user' or bot id
+    //   - text: string (required, 1-4000)
+    //   - createdAt: timestamp (required)
+    //   - kind: string (required, 'news' | 'chat' | 'system')
+    //   - articleUrl: string (optional, http/https)
+    //   - articleTitle: string (optional, 1-300)
+    //   - imageUrl: string (optional, http/https)
+    //   - matchedKeywords: list<string> (optional, max 12)
+    //   - sources: list<string> (optional, max 8)
+    //   - flash: string (optional, now|soon|recent)
+    //
+    // Collection: users/{userId}/seen
+    // Document ID: derived from article url
+    // Fields:
+    //   - url: string (required, http/https, 8-2000)
+    //   - botId: string (required, 1-40)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: users/{userId}/push
+    // Document ID: 'current'
+    // Fields:
+    //   - endpoint: string (required, http/https, 8-2000)
+    //   - p256dh: string (required, 1-200)
+    //   - auth: string (required, 1-200)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function createdAtUnchanged() {
+      return request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isValidOptionalUrl(field) {
+      return !(field in request.resource.data)
+        || (
+          request.resource.data[field] is string
+          && request.resource.data[field].size() >= 8
+          && request.resource.data[field].size() <= 2000
+          && (
+            request.resource.data[field].matches('^https://.*')
+            || request.resource.data[field].matches('^http://.*')
+          )
+        );
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data)
+        || (
+          request.resource.data[field] is string
+          && request.resource.data[field].size() >= minLen
+          && request.resource.data[field].size() <= maxLen
+        );
+    }
+
+    function isValidOptionalBool(field) {
+      return !(field in request.resource.data)
+        || request.resource.data[field] is bool;
+    }
+
+    function isValidOptionalTimestamp(field) {
+      return !(field in request.resource.data)
+        || request.resource.data[field] is timestamp;
+    }
+
+    function isValidPrefBucket(pref) {
+      return pref is map
+        && pref.keys().hasOnly(['sports', 'leagues', 'teams', 'topics', 'keywords'])
+        && pref.sports is list
+        && pref.sports.size() <= 20
+        && pref.leagues is list
+        && pref.leagues.size() <= 20
+        && pref.teams is list
+        && pref.teams.size() <= 20
+        && pref.topics is list
+        && pref.topics.size() <= 20
+        && (
+          !('keywords' in pref)
+          || (pref.keywords is list && pref.keywords.size() <= 20)
+        );
+    }
+
+    function isValidPreferences() {
+      return !('preferences' in request.resource.data)
+        || (
+          request.resource.data.preferences is map
+          && request.resource.data.preferences.keys().hasOnly([
+            'globie',
+            'sporty',
+            'techie',
+            'popcorn',
+            'stonks',
+            'labrat',
+            'pitch'
+          ])
+          && isValidPrefBucket(request.resource.data.preferences.globie)
+          && isValidPrefBucket(request.resource.data.preferences.sporty)
+          && isValidPrefBucket(request.resource.data.preferences.techie)
+          && isValidPrefBucket(request.resource.data.preferences.popcorn)
+          && isValidPrefBucket(request.resource.data.preferences.stonks)
+          && isValidPrefBucket(request.resource.data.preferences.labrat)
+          && isValidPrefBucket(request.resource.data.preferences.pitch)
+        );
+    }
+
+    function isValidUser() {
+      return hasOnlyAllowedFields([
+          'displayName',
+          'enabledBots',
+          'onboarded',
+          'createdAt',
+          'lastIngestAt',
+          'pushEnabled',
+          'preferences'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.enabledBots is list
+        && request.resource.data.enabledBots.size() <= 8
+        && request.resource.data.onboarded is bool
+        && request.resource.data.createdAt is timestamp
+        && isValidOptionalTimestamp('lastIngestAt')
+        && isValidOptionalBool('pushEnabled')
+        && isValidPreferences();
+    }
+
+    function isValidChat() {
+      return hasOnlyAllowedFields([
+          'type',
+          'botId',
+          'title',
+          'lastMessage',
+          'lastMessageAt',
+          'unread'
+        ])
+        && request.resource.data.type in ['group', 'dm']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 400
+        && request.resource.data.lastMessageAt is timestamp
+        && request.resource.data.unread is int
+        && request.resource.data.unread >= 0
+        && request.resource.data.unread <= 9999
+        && isValidOptionalString('botId', 1, 40)
+        && (
+          request.resource.data.type != 'dm'
+          || ('botId' in request.resource.data)
+        );
+    }
+
+    function isValidOptionalStringList(field, maxItems) {
+      return !(field in request.resource.data)
+        || (
+          request.resource.data[field] is list
+          && request.resource.data[field].size() <= maxItems
+        );
+    }
+
+    function isValidMessage() {
+      return hasOnlyAllowedFields([
+          'sender',
+          'text',
+          'createdAt',
+          'kind',
+          'articleUrl',
+          'articleTitle',
+          'imageUrl',
+          'matchedKeywords',
+          'sources',
+          'flash'
+        ])
+        && request.resource.data.sender is string
+        && request.resource.data.sender.size() > 0
+        && request.resource.data.sender.size() <= 40
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.kind in ['news', 'chat', 'system']
+        && isValidOptionalUrl('articleUrl')
+        && isValidOptionalUrl('imageUrl')
+        && isValidOptionalString('articleTitle', 1, 300)
+        && isValidOptionalStringList('matchedKeywords', 12)
+        && isValidOptionalStringList('sources', 8)
+        && (
+          !('flash' in request.resource.data)
+          || request.resource.data.flash in ['now', 'soon', 'recent']
+        );
+    }
+
+    function isValidSeen() {
+      return hasOnlyAllowedFields(['url', 'botId', 'createdAt', 'title'])
+        && request.resource.data.url is string
+        && request.resource.data.url.size() >= 8
+        && request.resource.data.url.size() <= 2000
+        && (
+          request.resource.data.url.matches('^https://.*')
+          || request.resource.data.url.matches('^http://.*')
+        )
+        && request.resource.data.botId is string
+        && request.resource.data.botId.size() > 0
+        && request.resource.data.botId.size() <= 40
+        && request.resource.data.createdAt is timestamp
+        && isValidOptionalString('title', 1, 300);
+    }
+
+    function isValidPush() {
+      return hasOnlyAllowedFields(['endpoint', 'p256dh', 'auth', 'createdAt'])
+        && request.resource.data.endpoint is string
+        && request.resource.data.endpoint.size() >= 8
+        && request.resource.data.endpoint.size() <= 2000
+        && (
+          request.resource.data.endpoint.matches('^https://.*')
+          || request.resource.data.endpoint.matches('^http://.*')
+        )
+        && request.resource.data.p256dh is string
+        && request.resource.data.p256dh.size() > 0
+        && request.resource.data.p256dh.size() <= 200
+        && request.resource.data.auth is string
+        && request.resource.data.auth.size() > 0
+        && request.resource.data.auth.size() <= 200
+        && request.resource.data.createdAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser();
+      allow update: if isOwner(userId) && isValidUser() && createdAtUnchanged();
+      allow delete: if false;
+
+      match /chats/{chatId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChat();
+        allow update: if isOwner(userId) && isValidChat();
+        allow delete: if isOwner(userId);
+
+        match /messages/{messageId} {
+          allow read: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidMessage();
+          allow update: if false;
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      match /seen/{articleId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSeen();
+        allow update: if isOwner(userId) && isValidSeen();
+        allow delete: if isOwner(userId);
+      }
+
+      match /push/{pushId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && pushId == 'current' && isValidPush();
+        allow update: if isOwner(userId) && pushId == 'current' && isValidPush();
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
