@@ -25,10 +25,10 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-[13px] tracking-tight transition ${
+      className={`rounded-full border px-3 py-2 text-[13px] tracking-tight transition active:scale-[0.98] ${
         on
           ? "border-white bg-white text-black"
-          : "border-white/15 bg-transparent text-white/70 hover:border-white/35"
+          : "border-white/15 bg-transparent text-white/70"
       }`}
     >
       {label}
@@ -65,13 +65,13 @@ function CustomAdd({
         }}
         placeholder="add your own"
         aria-label={label}
-        className="h-10 flex-1 rounded-full border border-white/12 bg-white/4 px-4 text-[13px] outline-none placeholder:text-white/30"
+        className="h-11 min-w-0 flex-1 rounded-full border border-white/12 bg-white/4 px-4 text-[16px] outline-none placeholder:text-white/30"
       />
       <button
         type="button"
         onClick={submit}
         disabled={!text.trim()}
-        className="h-10 rounded-full border border-white/20 px-4 text-[13px] disabled:opacity-30"
+        className="h-11 shrink-0 rounded-full border border-white/20 px-4 text-[13px] disabled:opacity-30"
       >
         add
       </button>
@@ -113,27 +113,27 @@ export function PreferencesEditor({
   }
 
   return (
-    <div className="grid gap-8">
+    <div className="grid gap-6 pb-4 pt-2">
       {configs.map((config) => {
         const bot = getBot(config.botId);
         const pref = value[config.botId];
         return (
-          <section key={config.botId} className="border-t border-white/8 pt-6">
-            <div className="mb-4 flex items-start gap-3">
-              <BotMark id={bot?.id} size="md" />
-              <div>
+          <section key={config.botId} className="border-t border-white/8 pt-5 first:border-t-0 first:pt-0">
+            <div className="mb-3 flex items-start gap-2.5">
+              <BotMark id={bot?.id} size="sm" />
+              <div className="min-w-0">
                 <h3
-                  className="display text-[18px] font-black tracking-tight"
+                  className="display text-[16px] font-black tracking-tight md:text-[18px]"
                   style={{ color: bot?.color }}
                 >
                   {bot?.name}
                 </h3>
-                <p className="mt-0.5 text-[13px] leading-5 text-[var(--muted)]">
+                <p className="mt-0.5 text-[12px] leading-snug text-[var(--muted)] md:text-[13px]">
                   {config.blurb}
                 </p>
               </div>
             </div>
-            <div className="grid gap-5">
+            <div className="grid gap-4 md:gap-5">
               {config.sections.map((section, index) => {
                 if (!sectionVisible(section, pref)) return null;
                 const selected = pref[section.key];
@@ -150,7 +150,7 @@ export function PreferencesEditor({
                   ) === section;
                 return (
                   <div key={`${config.botId}-${section.key}-${index}`}>
-                    <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/40">
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">
                       {section.label}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -190,7 +190,7 @@ export function PreferencesEditor({
                 );
               })}
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/40">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">
                   Keywords
                 </p>
                 <p className="mb-2 text-[12px] leading-5 text-[var(--muted)]">
@@ -245,45 +245,44 @@ export function PreferencesScreen({
 
   useEffect(() => {
     if (open) setDraft(initial ?? defaultPreferences());
-    // snapshot identity changes while editing; only reset on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col bg-black">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-black">
       <header
-        className="flex items-end justify-between border-b border-white/8 px-5 pb-4"
-        style={{ paddingTop: "calc(var(--safe-top) + 14px)" }}
+        className="shrink-0 border-b border-white/8 px-4 pb-3 md:px-5 md:pb-4"
+        style={{ paddingTop: "calc(var(--safe-top) + 12px)" }}
       >
-        <div>
-          <p className="display text-[12px] font-black italic text-rose-300">
-            filters
-          </p>
-          <h2 className="display mt-1 text-[32px] font-black tracking-tight">preferences</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="display text-[11px] font-black italic text-rose-300 md:text-[12px]">
+              filters
+            </p>
+            <h2 className="display mt-0.5 text-[24px] font-black leading-none tracking-tight md:mt-1 md:text-[28px]">
+              preferences
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/12 text-white active:bg-white/[0.08]"
+            aria-label="close"
+          >
+            <IconClose className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid h-9 w-9 place-items-center rounded-full border border-white/12 text-white"
-          aria-label="close"
-        >
-          <IconClose className="h-4 w-4" />
-        </button>
       </header>
-      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-2 pb-28">
-        <p className="pt-4 text-[14px] leading-6 text-[var(--muted)]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-2 no-scrollbar md:px-5">
+        <p className="pt-2 text-[14px] leading-6 text-[var(--muted)] md:pt-4">
           Each desk only posts stories that match your keywords. Add a team, a ticker, a country — then save.
         </p>
-        <PreferencesEditor
-          value={draft}
-          onChange={setDraft}
-          botIds={botIds}
-        />
+        <PreferencesEditor value={draft} onChange={setDraft} botIds={botIds} />
       </div>
       <div
-        className="absolute inset-x-0 bottom-0 border-t border-white/8 bg-black/90 px-5 pt-3 backdrop-blur-xl"
+        className="shrink-0 border-t border-white/8 bg-black/95 px-4 pt-3 backdrop-blur-xl md:px-5"
         style={{ paddingBottom: "calc(var(--safe-bottom) + 14px)" }}
       >
         <button
@@ -292,7 +291,7 @@ export function PreferencesScreen({
           onClick={async () => {
             await onSave(draft);
           }}
-          className="h-12 w-full rounded-full bg-white text-[15px] font-medium text-black disabled:opacity-40"
+          className="h-12 w-full rounded-full bg-white text-[15px] font-semibold text-black disabled:opacity-40"
         >
           {saving ? "saving..." : "save preferences"}
         </button>

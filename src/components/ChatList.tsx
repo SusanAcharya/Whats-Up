@@ -32,13 +32,13 @@ function ChatRow({
       type="button"
       onClick={onSelect}
       aria-label={isGroup ? "the timeline" : bot?.name ?? chat.title}
-      className="flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition"
+      className="flex w-full max-w-full items-center gap-2.5 rounded-xl border px-2.5 py-2.5 text-left transition md:gap-3 md:rounded-2xl md:px-3 md:py-3"
       style={{
         background: on ? hexAlpha(accent, 0.12) : "rgba(255,255,255,0.02)",
         borderColor: on ? hexAlpha(accent, 0.45) : "rgba(255,255,255,0.06)",
       }}
     >
-      <BotMark id={isGroup ? "group" : bot?.id} size="lg" />
+      <BotMark id={isGroup ? "group" : bot?.id} size="md" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2">
           <span
@@ -87,53 +87,55 @@ export function ChatList({
   const dms = visible.filter((chat) => chat.id !== GROUP_CHAT_ID);
 
   return (
-    <section className="chat-bg flex h-full min-h-0 flex-col">
+    <div className="chat-bg flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden">
       <header
-        className="relative z-10 px-5 pb-3"
-        style={{ paddingTop: "calc(var(--safe-top) + 16px)" }}
+        className="relative z-10 shrink-0 px-4 pb-2 md:px-5 md:pb-3"
+        style={{ paddingTop: "calc(var(--safe-top) + 12px)" }}
       >
-        <p className="display text-[13px] font-black italic tracking-tight text-rose-300">
+        <p className="display text-[12px] font-black italic tracking-tight text-rose-300 md:text-[13px]">
           what&apos;s up
         </p>
-        <h1 className="mt-1 text-[40px] font-black leading-[0.85] tracking-tight">chats</h1>
-        <p className="mt-2 text-[12px] text-[var(--muted)]">
+        <h1 className="display mt-0.5 text-[26px] font-black leading-none tracking-tight md:mt-1 md:text-[34px]">
+          chats
+        </h1>
+        <p className="mt-1.5 text-[11px] text-[var(--muted)] md:mt-2 md:text-[12px]">
           {members} {members === 1 ? "loudmouth" : "loudmouths"} in the group
         </p>
 
-        <div className="mt-4 flex overflow-hidden rounded-2xl border border-white/[0.08] bg-black/30">
+        <div className="mt-3 flex overflow-hidden rounded-xl border border-white/[0.08] bg-black/30 md:mt-4 md:rounded-2xl">
           <button
             type="button"
             onClick={() => ingest("manual")}
-            className="flex flex-1 flex-col items-center gap-1 py-3 text-white/70 transition hover:bg-white/[0.05] hover:text-white"
+            className="flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-white/70 active:bg-white/[0.08]"
             aria-label="catch me up"
           >
-            <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
+            <IconRefresh className={`h-[17px] w-[17px] ${ingesting ? "animate-spin" : ""}`} />
             <span className="text-[10px] font-medium tracking-wide">refresh</span>
           </button>
           <div className="w-px self-stretch bg-white/[0.08]" aria-hidden />
           <button
             type="button"
             onClick={onOpenPrefs}
-            className="flex flex-1 flex-col items-center gap-1 py-3 text-white/70 transition hover:bg-white/[0.05] hover:text-white"
+            className="flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-white/70 active:bg-white/[0.08]"
             aria-label="preferences"
           >
-            <IconSliders className="h-[18px] w-[18px]" />
+            <IconSliders className="h-[17px] w-[17px]" />
             <span className="text-[10px] font-medium tracking-wide">filters</span>
           </button>
           <div className="w-px self-stretch bg-white/[0.08]" aria-hidden />
           <button
             type="button"
             onClick={onOpenMembers}
-            className="flex flex-1 flex-col items-center gap-1 bg-[#fde047]/10 py-3 text-[#fde047] transition hover:bg-[#fde047]/18"
+            className="flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 bg-[#fde047]/10 py-2 text-[#fde047] active:bg-[#fde047]/18"
             aria-label="add members"
           >
-            <IconPlus className="h-[18px] w-[18px]" />
+            <IconPlus className="h-[17px] w-[17px]" />
             <span className="text-[10px] font-semibold tracking-wide">add bot</span>
           </button>
         </div>
       </header>
 
-      <div className="relative z-10 no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-2">
+      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-1 no-scrollbar md:px-4 md:py-2">
         {group.length > 0 ? (
           <section className="mb-5">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">
@@ -171,9 +173,9 @@ export function ChatList({
         ) : null}
       </div>
 
-      <p className="relative z-10 border-t border-white/[0.06] px-5 py-3 text-center text-[11px] text-white/30">
+      <p className="relative z-10 shrink-0 border-t border-white/[0.06] px-4 py-2.5 text-center text-[10px] text-white/30 md:px-5 md:py-3 md:text-[11px]">
         {backend === "local" ? "this phone only. chaotic on purpose." : "synced · only the important pings"}
       </p>
-    </section>
+    </div>
   );
 }

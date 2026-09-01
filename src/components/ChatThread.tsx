@@ -88,17 +88,17 @@ export function ChatThread({
 
   return (
     <section
-      className="thread-bg flex h-full min-h-0 flex-col"
+      className="thread-bg flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden"
       style={{ ["--thread-accent" as string]: hexAlpha(accent, 0.18) }}
     >
       <header
-        className="relative z-10 flex items-center gap-2 border-b border-white/[0.06] bg-black/40 px-2 pb-2.5 backdrop-blur-xl"
+        className="relative z-10 flex shrink-0 items-center gap-1.5 border-b border-white/[0.06] bg-black/40 px-2 pb-2 backdrop-blur-xl md:gap-2 md:px-2 md:pb-2.5"
         style={{ paddingTop: "calc(var(--safe-top) + 8px)" }}
       >
         <button
           type="button"
           onClick={() => selectChat(null)}
-          className="grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/[0.08]"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/80 active:bg-white/[0.08] md:hidden"
           aria-label="back"
         >
           <IconBack className="h-5 w-5" />
@@ -128,7 +128,7 @@ export function ChatThread({
           <button
             type="button"
             onClick={onOpenPrefs}
-            className="grid h-9 w-9 place-items-center rounded-full text-white/55 hover:bg-white/[0.08] hover:text-white/80"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
             aria-label="filters"
           >
             <IconSliders className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function ChatThread({
           <button
             type="button"
             onClick={onOpenMembers}
-            className="grid h-9 w-9 place-items-center rounded-full text-white/55 hover:bg-white/[0.08] hover:text-white/80"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
             aria-label="members"
           >
             <IconPeople className="h-4 w-4" />
@@ -147,14 +147,14 @@ export function ChatThread({
         <button
           type="button"
           onClick={() => ingest("manual")}
-          className="grid h-9 w-9 place-items-center rounded-full text-white/55 hover:bg-white/[0.08] hover:text-white/80"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/55 active:bg-white/[0.08]"
           aria-label="refresh"
         >
           <IconRefresh className={`h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
         </button>
       </header>
 
-      <div ref={scroller} className="relative z-10 no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scroller} className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-3 no-scrollbar md:px-4 md:py-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center px-8 pt-24 text-center">
             {isGroup ? (
@@ -203,7 +203,7 @@ export function ChatThread({
 
       <form
         onSubmit={onSubmit}
-        className="relative z-10 flex items-end gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2.5 backdrop-blur-xl"
+        className="relative z-10 flex shrink-0 items-end gap-2 border-t border-white/[0.06] bg-black/50 px-3 pt-2 backdrop-blur-xl md:px-3 md:pt-2.5"
         style={{ paddingBottom: "calc(var(--safe-bottom) + 10px)" }}
       >
         <textarea
@@ -219,12 +219,12 @@ export function ChatThread({
           }}
           rows={1}
           placeholder={isGroup ? "Message the timeline" : `Message ${bot?.name ?? "them"}`}
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[15px] leading-5 text-white outline-none placeholder:text-white/30"
+          className="max-h-28 min-h-11 flex-1 resize-none rounded-[22px] border-0 bg-white/[0.08] px-4 py-2.5 text-[16px] leading-5 text-white outline-none placeholder:text-white/30"
         />
         <button
           type="submit"
           disabled={!draft.trim() || sending}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition disabled:bg-white/10 disabled:text-white/25"
           style={{ background: draft.trim() ? accent : undefined }}
           aria-label="send"
         >

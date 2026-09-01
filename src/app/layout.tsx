@@ -39,7 +39,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geist.variable} ${display.variable} h-full`}>
-      <body className="min-h-full bg-background text-foreground antialiased">
+      <body className="h-dvh overflow-hidden bg-background text-foreground antialiased">
         <StoreProvider>
           <PwaRegister />
           {children}
