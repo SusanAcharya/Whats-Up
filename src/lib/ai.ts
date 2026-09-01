@@ -110,19 +110,84 @@ export async function complete(messages: ChatTurn[], temperature = 0.7): Promise
 }
 
 function fallbackText(story: FlashStory) {
-  const excerpt = (story.excerpt || story.snippet || "").replace(/\s+/g, " ").trim();
-  const sentences = excerpt.split(/(?<=[.!?])\s+/).filter((row) => row.length > 20);
-  const summary = sentences.slice(0, 2).join(" ");
-  if (summary.length >= 40 && !(tooLikeTitle(summary, story.title) && summary.length < story.title.length + 30)) {
-    return sentenceCase(summary);
+  const title = plainify(story.title.replace(/\s+/g, " ").trim());
+  const excerpt = plainify((story.excerpt || story.snippet || "").replace(/\s+/g, " ").trim());
+  const firstSentence =
+    excerpt.split(/(?<=[.!?])\s+/).find((row) => row.length > 25 && !tooLikeTitle(row, title)) ?? "";
+
+  if (firstSentence) {
+    return sentenceCase(trimSummary(firstSentence, 200));
   }
-  const title = story.title.replace(/\s+/g, " ").trim();
-  const source = story.sources[0] || story.source || "the wires";
-  const why = story.matchedKeywords.slice(0, 2).join(", ");
-  if (excerpt.length >= 40 && !tooLikeTitle(excerpt, title)) {
-    return sentenceCase(`${title}. ${excerpt.slice(0, 220)}`.replace(/\s+/g, " ").trim());
+
+  const gist = plainHeadline(title);
+  const tag = story.matchedKeywords[0];
+  if (tag) {
+    return `${gist} Good to know if you follow ${tag}.`;
   }
-  return sentenceCase(`${title}. ${source} has the latest${why ? ` — ${why}` : ""}.`);
+  return `${gist} Worth a quick look.`;
+}
+
+function plainHeadline(title: string) {
+  const words = title.trim().split(/\s+/);
+  const soft = new Set([
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "is", "are", "was", "were",
+    "has", "have", "says", "said", "will", "be", "by", "as", "it", "its", "with", "from", "that", "this",
+  ]);
+  const out = words.map((word, index) => {
+    if (index === 0) return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    if (soft.has(word.toLowerCase())) return word.toLowerCase();
+    if (word === word.toUpperCase() && word.length <= 5) return word;
+    if (/^[A-Z][a-z]+/.test(word) && word.length > 2) return word;
+    return word.toLowerCase();
+  });
+  return sentenceCase(trimSummary(out.join(" ").replace(/[?!.]+$/, ""), 150));
+}
+
+async function summarizeOneSimple(story: FlashStory): Promise<string | null> {
+  const system = `Explain news in plain English for a group chat.
+
+Write exactly 1-2 short sentences (under 200 characters total).
+- Say what happened in simple words.
+- Optional second sentence: why a normal person might care.
+- No jargon, no hype, no headline copy, no invented facts.
+- Proper sentence case.`;
+
+  try {
+    const raw = await complete(
+      [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: `TITLE: ${story.title}\nEXCERPT: ${story.excerpt || story.snippet || "(none)"}`,
+        },
+      ],
+      0.2,
+    );
+    const text = trimSummary(stripThink(raw).replace(/^["']|["']$/g, ""), 220);
+    if (!text || text.length < 20) return null;
+    return sentenceCase(text);
+  } catch {
+    return null;
+  }
+}
+
+function plainify(text: string) {
+  return text
+    .replace(/\([^)]{20,}\)/g, "")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function trimSummary(text: string, maxChars = 220) {
+  const cleaned = plainify(cleanVoice(text));
+  const sentences = cleaned.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let out = sentences.slice(0, 2).join(" ");
+  if (out.length <= maxChars) return out;
+  out = sentences[0] ?? out;
+  if (out.length <= maxChars) return out;
+  const cut = out.slice(0, maxChars - 1).replace(/\s+\S*$/, "");
+  return `${cut}…`;
 }
 
 function sentenceCase(text: string) {
@@ -132,17 +197,22 @@ function sentenceCase(text: string) {
 }
 
 function tooLikeTitle(text: string, title: string) {
+  const a = text.trim().toLowerCase();
+  const b = title.trim().toLowerCase();
+  if (a === b) return true;
+  if (a.length <= b.length * 1.15 && (a.startsWith(b.slice(0, Math.min(b.length, 40))) || b.startsWith(a))) {
+    return true;
+  }
   const left = titleTokens(text);
   const right = titleTokens(title);
-  if (left.size === 0 || right.size === 0) {
-    return text.trim().toLowerCase() === title.trim().toLowerCase();
-  }
+  if (left.size === 0 || right.size === 0) return false;
   let overlap = 0;
   for (const word of left) {
     if (right.has(word)) overlap += 1;
   }
   const smaller = Math.min(left.size, right.size);
-  return overlap / smaller >= 0.72;
+  const ratio = overlap / smaller;
+  return ratio >= 0.9 && text.length < title.length * 1.25;
 }
 
 function cleanVoice(text: string) {
@@ -159,28 +229,31 @@ function cleanVoice(text: string) {
 export async function summarizeFlashes(stories: FlashStory[]): Promise<IngestItem[]> {
   if (stories.length === 0) return [];
 
-  const system = `You are a wire editor writing a news flash for a group chat.
+  const system = `You explain news the way you'd text a friend — short and simple.
 
-Each story already passed a relevancy + popularity gate. Write a REAL summary, not the headline.
+Each story already passed a filter. Your job: make the gist obvious in plain English.
 
 Rules:
-- 2 sentences. Sentence 1: what is happening, with the key fact/number/name. Sentence 2: why it matters or what happens next.
-- Proper sentence case (capitalize the first letter). Casual and precise — not formal newspaper voice.
+- 1-2 short sentences. Aim for under 200 characters total.
+- Use simple words. No jargon. If a term is needed, explain it in plain language.
+- Sentence 1: what happened (one main fact). Sentence 2 (optional): why it matters in everyday terms.
+- Proper sentence case. Sound human, not like a newspaper or lawyer.
 - Do not copy or lightly rewrite the TITLE.
-- Never invent facts. Use TITLE + EXCERPT. If the excerpt is thin, still write two sentences from the facts in the title — do not paste the headline.
-- keep:false only for rankings, schedules, listicles, or stories with no real development.
+- Never invent facts. Use TITLE + EXCERPT only.
+- No "breaking:", no emoji, no hype ("insane", "massive", "unprecedented").
+- keep:false for rankings, schedules, listicles, or fluff with no real news.
 
 Good:
-- Rui Hachimura is staying in LA after the deadline talks collapsed. That leaves the Lakers' wing rotation as-is heading into the last stretch.
-- Traders now expect the Fed to hold at 2pm. A cut this late would have been the surprise.
+- Apple says OpenAI destroyed evidence in their court case. Could affect how AI companies handle legal requests.
+- The Fed kept interest rates the same. Borrowing costs stay put for now.
 
 Bad:
-- restating the headline
-- all-lowercase texting slang
-- "breaking:"
+- Long sentences with multiple clauses and insider terms
+- Restating the headline
+- Explaining every detail — pick the one thing that matters
 
 Return JSON only:
-{"items":[{"index":0,"keep":true,"groupText":"Rui Hachimura is staying in LA after the deadline talks collapsed. That leaves the Lakers' wing rotation as-is heading into the last stretch."}]}`;
+{"items":[{"index":0,"keep":true,"groupText":"Apple says OpenAI destroyed evidence in their court case. Could affect how AI companies handle legal requests."}]}`;
 
   const user = stories
     .map(
@@ -190,12 +263,12 @@ Return JSON only:
     .join("\n\n");
 
   const toItem = (story: FlashStory, text: string, strict = true): IngestItem | null => {
-    const summary = sentenceCase(cleanVoice(text));
-    if (!summary || summary.length < 24) return null;
+    const summary = sentenceCase(trimSummary(text));
+    if (!summary || summary.length < 20) return null;
     if (strict && tooLikeTitle(summary, story.title)) return null;
     return {
       botId: story.botId,
-      groupText: summary.slice(0, 500),
+      groupText: summary.slice(0, 280),
       dmText: null,
       sendDm: false,
       title: story.title,
@@ -214,7 +287,7 @@ Return JSON only:
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      0.35,
+      0.25,
     );
     const parsed = extractJson(raw) as {
       items?: {
@@ -236,15 +309,18 @@ Return JSON only:
       kept.push(item);
     }
     if (kept.length > 0) return kept;
-    console.warn("summarize produced no usable text, using excerpts");
+    console.warn("summarize produced no usable text, trying simple per-story");
   } catch (error) {
     console.warn("curate fallback", error);
   }
 
-  return stories
-    .map((story) => toItem(story, fallbackText(story), false))
-    .filter((item): item is IngestItem => Boolean(item))
-    .slice(0, 4);
+  const simple = await Promise.all(
+    stories.map(async (story) => {
+      const text = (await summarizeOneSimple(story)) ?? fallbackText(story);
+      return toItem(story, text, false);
+    }),
+  );
+  return simple.filter((item): item is IngestItem => Boolean(item)).slice(0, 4);
 }
 
 export async function botReply(input: {
