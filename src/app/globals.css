@@ -237,9 +237,9 @@ a:focus-visible,
   position: relative;
   max-width: 100%;
   padding: 9px 13px;
-  font-size: 16px;
-  line-height: 1.48;
-  letter-spacing: -0.01em;
+  font-size: 15px;
+  line-height: 1.52;
+  letter-spacing: -0.018em;
   word-break: break-word;
 }
 
@@ -254,9 +254,30 @@ a:focus-visible,
 }
 
 .bubble-news {
-  font-size: 16px;
-  line-height: 1.52;
-  letter-spacing: -0.01em;
+  font-size: 15px;
+  line-height: 1.58;
+  letter-spacing: -0.018em;
+}
+
+.bubble-news-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.022em;
+}
+
+.bubble-news-body {
+  font-size: 15px;
+  line-height: 1.58;
+  letter-spacing: -0.018em;
+}
+
+.bubble-news-source {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
 
 .day-pill {

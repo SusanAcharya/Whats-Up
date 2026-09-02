@@ -97,42 +97,52 @@ export function ChatList({
   const group = visible.filter((chat) => chat.id === GROUP_CHAT_ID);
   const dms = visible.filter((chat) => chat.id !== GROUP_CHAT_ID);
   const rows = [...group, ...dms];
+  const quiet =
+    members > 0 &&
+    dms.every((chat) => !chat.lastMessage?.trim()) &&
+    group.every(
+      (chat) =>
+        !chat.lastMessage?.trim() || chat.lastMessage.toLowerCase().includes("add members"),
+    );
 
   return (
     <div className="screen-panel flex h-full min-h-0 w-full flex-col overflow-hidden">
       <header className="app-header shrink-0 px-4 pb-3 md:px-4">
-        <ScreenTitle>Chats</ScreenTitle>
-        <MetaLabel>
-          {members} {members === 1 ? "bot" : "bots"}
-          {unreadTotal > 0 ? ` · ${unreadTotal} unread` : ""}
-        </MetaLabel>
-        {unreadTotal > 0 ? (
-          <button
-            type="button"
-            onClick={() => void markAllRead()}
-            className="mt-1 text-[13px] font-medium text-[#0a84ff] active:opacity-70"
-          >
-            Mark all read
-          </button>
-        ) : null}
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => ingest("manual")}
-            className="btn-secondary min-h-[40px] flex-1 gap-2 text-[13px]"
-          >
-            <IconRefresh className={`inline h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="btn-secondary min-h-[40px] flex-1 gap-2 text-[13px]"
-          >
-            <IconSettings className="inline h-4 w-4" />
-            Settings
-          </button>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <ScreenTitle>What&apos;s Up</ScreenTitle>
+            <MetaLabel>
+              {members} {members === 1 ? "bot" : "bots"}
+              {unreadTotal > 0 ? ` · ${unreadTotal} unread` : ""}
+            </MetaLabel>
+            {unreadTotal > 0 ? (
+              <button
+                type="button"
+                onClick={() => void markAllRead()}
+                className="mt-1 text-[13px] font-medium text-[#0a84ff] active:opacity-70"
+              >
+                Mark all read
+              </button>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 gap-1.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => ingest("manual")}
+              className="btn-icon"
+              aria-label="Refresh"
+            >
+              <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="btn-icon"
+              aria-label="Settings"
+            >
+              <IconSettings className="h-[18px] w-[18px]" />
+            </button>
+          </div>
         </div>
 
         {statusText ? (
@@ -143,16 +153,46 @@ export function ChatList({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain no-scrollbar">
-        {rows.map((chat, i) => (
-          <ListRowEnter key={chat.id} index={i}>
-            <ChatRow
-              chat={chat}
-              active={selectedChatId === chat.id}
-              onSelect={() => selectChat(chat.id)}
-              showSep={i < rows.length - 1}
-            />
-          </ListRowEnter>
-        ))}
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center px-6 pt-16 text-center">
+            <p className="text-[16px] font-medium text-[var(--ink-muted)]">No chats yet</p>
+            <p className="mt-2 max-w-[240px] text-[14px] leading-relaxed text-[var(--ink-faint)]">
+              Add bots in Settings and they&apos;ll start texting when something matters.
+            </p>
+            <button type="button" onClick={onOpenSettings} className="btn-secondary mt-5 w-auto px-4">
+              Add bots
+            </button>
+          </div>
+        ) : (
+          <>
+            {rows.map((chat, i) => (
+              <ListRowEnter key={chat.id} index={i}>
+                <ChatRow
+                  chat={chat}
+                  active={selectedChatId === chat.id}
+                  onSelect={() => selectChat(chat.id)}
+                  showSep={i < rows.length - 1}
+                />
+              </ListRowEnter>
+            ))}
+            {quiet && members > 0 ? (
+              <div className="mx-4 mt-6 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-4 py-3.5">
+                <p className="text-[14px] font-medium text-[var(--ink)]">Waiting on the wire</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-[var(--ink-faint)]">
+                  Pull to refresh, or broaden filters if it&apos;s been quiet for a while.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => ingest("manual")}
+                  disabled={ingesting}
+                  className="mt-3 text-[13px] font-medium text-[#0a84ff] active:opacity-70"
+                >
+                  {ingesting ? "Checking…" : "Check now"}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <p className="hairline-t shrink-0 px-4 py-2.5 text-center text-[11px] text-[var(--ink-faint)]">

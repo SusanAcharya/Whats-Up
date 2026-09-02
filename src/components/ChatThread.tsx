@@ -10,7 +10,7 @@ import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
-import { IconBack, IconRefresh, IconSend, IconSettings } from "./icons";
+import { IconBack, IconRefresh, IconSend, IconSettings, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
 
@@ -254,7 +254,9 @@ export function ChatThread({
         />
       ) : (
         <div className="app-footer hairline-t shrink-0 px-4 py-2.5 text-center">
-          <p className="text-[12px] text-[var(--ink-faint)]">Tap a story for the link · Ask bots in their DMs</p>
+          <p className="text-[12px] text-[var(--ink-faint)]">
+            Share a story · Ask bots in their DMs
+          </p>
         </div>
       )}
     </section>
@@ -329,7 +331,9 @@ function EmptyState({
       )}
       <p className="max-w-[280px] text-[16px] leading-relaxed text-[var(--ink-muted)]">
         {isGroup
-          ? "Quiet on purpose. We only post when it's actually huge."
+          ? ingesting
+            ? "Scanning headlines…"
+            : "Nothing big enough yet. We stay quiet on purpose."
           : bot?.id === "pitch"
             ? "Ask for a live score, the table, or who's kickoff next."
             : `Ask ${titleCaseName(bot?.name ?? "them")} about any story they drop.`}
@@ -343,7 +347,11 @@ function EmptyState({
             Broaden filters
           </button>
         </div>
-      ) : null}
+      ) : (
+        <p className="mt-4 max-w-[240px] text-[13px] leading-relaxed text-[var(--ink-faint)]">
+          Stories land here first. The timeline keeps the full feed.
+        </p>
+      )}
     </motion.div>
   );
 }
@@ -537,6 +545,31 @@ function Row({
   );
 }
 
+async function shareStory(message: ChatMessage) {
+  const title = message.articleTitle?.trim() || "Story from What's Up";
+  const text = message.text.trim();
+  const url = message.articleUrl;
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      await navigator.share({
+        title,
+        text: text.slice(0, 280),
+        ...(url ? { url } : {}),
+      });
+      return "shared" as const;
+    }
+    const clip = url || `${title}\n\n${text}`;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(clip);
+      return "copied" as const;
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") return null;
+    return null;
+  }
+}
+
 function NewsCard({
   message,
   index,
@@ -555,6 +588,8 @@ function NewsCard({
   onAskBot: (botId: BotId, message: ChatMessage) => void;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
+  const [shareHint, setShareHint] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
   const showTitle = Boolean(title && !sameCopy(title, body));
@@ -566,6 +601,15 @@ function NewsCard({
     message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
   const keywords = message.matchedKeywords ?? [];
   const botId = author?.id;
+  const showImage = Boolean(message.imageUrl && !imgFailed);
+
+  async function onShare() {
+    const result = await shareStory(message);
+    if (result === "copied") {
+      setShareHint("Link copied");
+      window.setTimeout(() => setShareHint(null), 1800);
+    }
+  }
 
   return (
     <MessageEnter index={index} className="mt-4">
@@ -591,50 +635,65 @@ function NewsCard({
             <span className="tabular text-[11px] text-[var(--ink-faint)]">{clock(message.createdAt)}</span>
           </header>
           <motion.div
-            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--hairline)]"
-            style={{
-              background: author?.bubble ?? "var(--elevated)",
-              boxShadow: `inset 3px 0 0 ${author?.color ?? "var(--ink-faint)"}`,
-            }}
+            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)]"
             whileTap={{ scale: 0.995 }}
             transition={springSoft}
           >
-            <div className="bubble-news px-3.5 py-3 text-[var(--ink)]">
-              <p className="whitespace-pre-wrap">{body}</p>
+            {showImage ? (
+              <div className="relative aspect-[16/9] w-full overflow-hidden bg-[var(--panel)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={message.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                  onError={() => setImgFailed(true)}
+                />
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--elevated)] to-transparent"
+                  aria-hidden
+                />
+              </div>
+            ) : null}
+            <div className={`bubble-news px-3.5 ${showImage ? "pb-3 pt-2.5" : "py-3"}`}>
+              {showTitle && title ? (
+                <p className="bubble-news-title mb-2 text-[var(--ink)]">{title}</p>
+              ) : null}
+              <p
+                className={`bubble-news-body whitespace-pre-wrap ${showTitle && title ? "text-[var(--ink-muted)]" : "text-[var(--ink)]"}`}
+              >
+                {body}
+              </p>
             </div>
             {message.articleUrl ? (
               <a
                 href={message.articleUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex items-center justify-between gap-2 hairline-t bg-[var(--panel)] px-3.5 py-3 transition active:bg-[var(--elevated)]"
+                className="group flex items-center justify-between gap-3 hairline-t px-3.5 py-2.5 transition active:bg-[var(--panel)]"
               >
-                <span className="min-w-0">
-                  <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-[var(--ink-faint)]">
-                    {sourceLabel}
-                  </span>
-                  {showTitle ? (
-                    <span className="mt-1 block text-[14px] font-medium leading-snug text-[var(--ink)] group-active:text-white">
-                      {title}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 text-[var(--ink-faint)]" aria-hidden>
-                  →
+                <span className="bubble-news-source truncate">{sourceLabel}</span>
+                <span className="shrink-0 text-[12px] font-medium text-[var(--ink-faint)] group-active:text-[var(--ink-muted)]">
+                  Read
                 </span>
               </a>
-            ) : null}
+            ) : (
+              <div className="hairline-t px-3.5 py-2.5">
+                <span className="bubble-news-source">{sourceLabel}</span>
+              </div>
+            )}
           </motion.div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {keywords.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setWhyOpen((open) => !open)}
-                className="text-[12px] text-[var(--ink-faint)] underline-offset-2 hover:text-[var(--ink-muted)] hover:underline"
-              >
-                {whyOpen ? "Hide" : "Why this story?"}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => void onShare()}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-full)] border border-[var(--hairline)] px-2.5 py-1 text-[12px] text-[var(--ink-muted)] active:scale-[0.97]"
+              aria-label="Share story"
+            >
+              <IconShare className="h-3 w-3" />
+              {shareHint ?? "Share"}
+            </button>
             {isGroup && botId ? (
               <button
                 type="button"
@@ -642,6 +701,15 @@ function NewsCard({
                 className="rounded-[var(--radius-full)] border border-[var(--hairline)] px-2.5 py-1 text-[12px] text-[var(--ink-muted)] active:scale-[0.97]"
               >
                 Ask {titleCaseName(author?.name ?? "")}
+              </button>
+            ) : null}
+            {keywords.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setWhyOpen((open) => !open)}
+                className="text-[12px] text-[var(--ink-faint)] underline-offset-2 hover:text-[var(--ink-muted)] hover:underline"
+              >
+                {whyOpen ? "Hide" : "Why this?"}
               </button>
             ) : null}
           </div>
