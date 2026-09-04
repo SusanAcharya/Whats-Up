@@ -2,8 +2,8 @@ import { ImageResponse } from "next/og";
 import { AppIconMark } from "@/lib/app-icon";
 
 export async function GET() {
-  return new ImageResponse(<AppIconMark size={512} variant="maskable" />, {
-    width: 512,
-    height: 512,
+  return new ImageResponse(<AppIconMark size={192} />, {
+    width: 192,
+    height: 192,
   });
 }
