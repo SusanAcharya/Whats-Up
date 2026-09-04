@@ -252,6 +252,20 @@ function SettingsPanel({
               Add topics or keywords per bot. Saved words drive DMs and timeline posts — tap a chip
               to remove it.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                const defaults = defaultPreferences();
+                setPrefsDraft((current) => {
+                  const next = { ...current };
+                  for (const id of prefBots) next[id] = { ...defaults[id] };
+                  return next;
+                });
+              }}
+              className="mt-3 mb-1 text-[13px] font-medium text-[#0a84ff] active:opacity-70"
+            >
+              Apply recommended topics
+            </button>
             <PreferencesEditor value={prefsDraft} onChange={setPrefsDraft} botIds={prefBots} />
           </>
         ) : null}
