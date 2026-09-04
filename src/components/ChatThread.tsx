@@ -10,7 +10,7 @@ import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
-import { IconBack, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
+import { IconBack, IconCards, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
 
@@ -103,8 +103,10 @@ const QUICK_REPLIES = ["Why does this matter?", "Explain simply", "What happens 
 
 export function ChatThread({
   onOpenSettings,
+  onOpenFlash,
 }: {
   onOpenSettings: (tab?: "alerts" | "topics" | "bots") => void;
+  onOpenFlash: (botId?: BotId | null) => void;
 }) {
   const {
     chats,
@@ -170,6 +172,14 @@ export function ChatThread({
         </div>
         <button type="button" onClick={() => onOpenSettings("topics")} className="btn-icon" aria-label="Topics">
           <IconHash className="h-[18px] w-[18px]" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpenFlash(isGroup ? null : (bot?.id ?? null))}
+          className="btn-icon"
+          aria-label="Flash cards"
+        >
+          <IconCards className="h-[18px] w-[18px]" />
         </button>
         <button type="button" onClick={() => ingest("manual")} className="btn-icon" aria-label="Refresh">
           <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />

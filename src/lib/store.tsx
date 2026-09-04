@@ -1201,10 +1201,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const messages = (selectedChatId ? (messageMap[selectedChatId] ?? []) : []).filter(
         (row) => stillMatches(row, profile?.preferences),
       );
-      const flashNews = (messageMap[GROUP_CHAT_ID] ?? [])
-        .filter((row) => row.kind === "news" && stillMatches(row, profile?.preferences))
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt);
+      const groupNews = (messageMap[GROUP_CHAT_ID] ?? []).filter(
+        (row) => row.kind === "news" && stillMatches(row, profile?.preferences),
+      );
+      const dmNews = (profile?.enabledBots ?? []).flatMap((botId) =>
+        (messageMap[dmChatId(botId)] ?? []).filter(
+          (row) => row.kind === "news" && stillMatches(row, profile?.preferences),
+        ),
+      );
+      const flashByKey = new Map<string, ChatMessage>();
+      for (const row of [...groupNews, ...dmNews]) {
+        const key = row.articleUrl || row.id;
+        const existing = flashByKey.get(key);
+        if (!existing || row.createdAt > existing.createdAt) flashByKey.set(key, row);
+      }
+      const flashNews = [...flashByKey.values()].sort((a, b) => b.createdAt - a.createdAt);
       return {
       ready,
       backend,

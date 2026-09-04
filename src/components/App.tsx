@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useStore } from "@/lib/store";
 import { ingestStatusText } from "@/lib/ingest-feedback";
+import type { BotId } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";
@@ -68,6 +69,7 @@ export function App() {
   const [settingsTab, setSettingsTab] = useState<"alerts" | "topics" | "bots">("alerts");
   const [flashOpen, setFlashOpen] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
+  const [flashBotId, setFlashBotId] = useState<BotId | null>(null);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [notifySaving, setNotifySaving] = useState(false);
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -136,6 +138,12 @@ export function App() {
 
   const statusText = ingestStatusText(lastIngestResult, ingesting);
 
+  function openFlash(botId: BotId | null = null) {
+    setFlashBotId(botId);
+    setFlashKey((key) => key + 1);
+    setFlashOpen(true);
+  }
+
   function openSettings(tab: "alerts" | "topics" | "bots" = "alerts") {
     setSettingsTab(tab);
     setSettingsOpen(true);
@@ -146,10 +154,7 @@ export function App() {
       <div className={`h-full min-h-0 ${selectedChatId ? "hidden md:block" : "block"}`}>
         <ChatList
           onOpenSettings={() => openSettings("alerts")}
-          onOpenFlash={() => {
-            setFlashKey((key) => key + 1);
-            setFlashOpen(true);
-          }}
+          onOpenFlash={() => openFlash(null)}
           statusText={statusText}
           onDismissStatus={dismissIngestBanner}
         />
@@ -160,7 +165,7 @@ export function App() {
         <AnimatePresence mode="wait">
           {selectedChatId ? (
             <SlideFromRight key={selectedChatId} className="h-full">
-              <ChatThread onOpenSettings={openSettings} />
+              <ChatThread onOpenSettings={openSettings} onOpenFlash={openFlash} />
             </SlideFromRight>
           ) : (
             <motion.div
@@ -216,6 +221,7 @@ export function App() {
       <FlashDeck
         key={flashKey}
         open={flashOpen}
+        botId={flashBotId}
         onClose={() => setFlashOpen(false)}
         onOpenTopics={() => {
           setFlashOpen(false);

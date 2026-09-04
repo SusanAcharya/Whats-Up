@@ -76,30 +76,44 @@ function useStoryImage(message: ChatMessage, active: boolean) {
 
 export function FlashDeck({
   open,
+  botId: initialBotId = null,
   onClose,
   onOpenTopics,
 }: {
   open: boolean;
+  botId?: BotId | null;
   onClose: () => void;
   onOpenTopics: () => void;
 }) {
-  const { flashNews, ingest, ingesting, askBot, selectChat } = useStore();
+  const { flashNews, ingest, ingesting, askBot, selectChat, profile } = useStore();
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  const [filterBot, setFilterBot] = useState<BotId | null>(initialBotId ?? null);
+  const enabledBots = profile?.enabledBots ?? [];
+
+  const cards = filterBot
+    ? flashNews.filter((row) => row.sender === filterBot)
+    : flashNews;
+  const filterBotMeta = filterBot ? getBot(filterBot) : null;
 
   useEffect(() => {
     if (!open) return;
     const el = scroller.current;
     if (!el) return;
-    el.scrollTo({ top: 0 });
     function onScroll() {
       if (!el) return;
       const next = Math.round(el.scrollTop / Math.max(el.clientHeight, 1));
-      setIndex(Math.min(Math.max(next, 0), Math.max(flashNews.length - 1, 0)));
+      setIndex(Math.min(Math.max(next, 0), Math.max(cards.length - 1, 0)));
     }
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [open, flashNews.length]);
+  }, [open, cards.length, filterBot]);
+
+  function pickBot(next: BotId | null) {
+    setFilterBot(next);
+    setIndex(0);
+    scroller.current?.scrollTo({ top: 0 });
+  }
 
   return (
     <AnimatePresence>
@@ -111,31 +125,71 @@ export function FlashDeck({
           exit={{ opacity: 0, y: 18 }}
           transition={springSoft}
         >
-          <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-2 pb-2 pt-[var(--safe-top)]">
-            <button type="button" onClick={onClose} className="btn-icon bg-black/30 backdrop-blur-sm" aria-label="Back">
-              <IconBack className="h-5 w-5" />
-            </button>
-            <div className="rounded-[var(--radius-full)] bg-black/35 px-3 py-1 text-center backdrop-blur-sm">
-              <p className="text-[13px] font-semibold tracking-[-0.02em]">Flash</p>
-              <p className="tabular text-[10px] text-white/60">
-                {flashNews.length > 0 ? `${index + 1} / ${flashNews.length}` : "empty"}
-              </p>
+          <header className="absolute inset-x-0 top-0 z-30 px-2 pb-2 pt-[var(--safe-top)]">
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={onClose} className="btn-icon bg-black/30 backdrop-blur-sm" aria-label="Back">
+                <IconBack className="h-5 w-5" />
+              </button>
+              <div className="rounded-[var(--radius-full)] bg-black/35 px-3 py-1 text-center backdrop-blur-sm">
+                <p className="text-[13px] font-semibold tracking-[-0.02em]">
+                  {filterBotMeta ? titleCaseName(filterBotMeta.name) : "Flash"}
+                </p>
+                <p className="tabular text-[10px] text-white/60">
+                  {cards.length > 0 ? `${index + 1} / ${cards.length}` : "empty"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void ingest("manual")}
+                className="btn-icon bg-black/30 backdrop-blur-sm"
+                aria-label="Refresh"
+              >
+                <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void ingest("manual")}
-              className="btn-icon bg-black/30 backdrop-blur-sm"
-              aria-label="Refresh"
-            >
-              <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
-            </button>
+
+            <div className="mt-2 flex gap-2 overflow-x-auto px-1 pb-1 no-scrollbar">
+              <button
+                type="button"
+                onClick={() => pickBot(null)}
+                className={`shrink-0 rounded-[var(--radius-full)] px-3 py-1.5 text-[12px] font-semibold backdrop-blur-sm ${
+                  filterBot === null ? "bg-white text-black" : "bg-black/40 text-white/85"
+                }`}
+              >
+                All
+              </button>
+              {enabledBots.map((id) => {
+                const bot = getBot(id);
+                const on = filterBot === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => pickBot(id)}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-full)] px-2.5 py-1.5 text-[12px] font-semibold backdrop-blur-sm ${
+                      on ? "bg-white text-black" : "bg-black/40 text-white/85"
+                    }`}
+                  >
+                    <BotMark id={id} size="sm" />
+                    {titleCaseName(bot?.name ?? id)}
+                  </button>
+                );
+              })}
+            </div>
           </header>
 
-          {flashNews.length === 0 ? (
+          {cards.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <p className="text-[18px] font-semibold text-[var(--ink)]">No cards yet</p>
+              {filterBotMeta ? <BotMark id={filterBotMeta.id} size="lg" /> : null}
+              <p className="mt-4 text-[18px] font-semibold text-[var(--ink)]">
+                {filterBotMeta
+                  ? `No cards from ${titleCaseName(filterBotMeta.name)}`
+                  : "No cards yet"}
+              </p>
               <p className="mt-2 max-w-[280px] text-[15px] leading-relaxed text-[var(--ink-muted)]">
-                Check headlines, or add topics so bots know what to pull.
+                {filterBotMeta
+                  ? "Check headlines or add topics for this bot."
+                  : "Check headlines, or add topics so bots know what to pull."}
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 <button
@@ -150,11 +204,16 @@ export function FlashDeck({
                   <IconHash className="h-3.5 w-3.5" />
                   Topics
                 </button>
+                {filterBot ? (
+                  <button type="button" onClick={() => pickBot(null)} className="btn-secondary w-auto px-4">
+                    Show all
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : (
             <div ref={scroller} className="flash-deck no-scrollbar">
-              {flashNews.map((message, i) => (
+              {cards.map((message, i) => (
                 <FlashCard
                   key={message.id}
                   message={message}
