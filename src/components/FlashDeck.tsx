@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { getBot, isBotId } from "@/lib/bots";
+import { dmChatId, getBot, isBotId } from "@/lib/bots";
 import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
@@ -13,7 +13,7 @@ import { useHiResStoryImage } from "@/lib/use-hires-image";
 
 async function shareStory(message: ChatMessage) {
   const title = message.articleTitle?.trim() || "Story from What's Up";
-  const text = message.text.trim();
+  const text = (message.summary || message.text).trim();
   const url = message.articleUrl;
   try {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
@@ -44,6 +44,33 @@ function useStoryImage(message: ChatMessage, active: boolean) {
   return useHiResStoryImage(message.articleUrl, message.imageUrl, active);
 }
 
+function newsKey(row: ChatMessage) {
+  return (row.articleUrl || `${row.sender}:${row.articleTitle || row.text}` || row.id).toLowerCase();
+}
+
+/**
+ * Flash must stay locked to whatever the chats already show.
+ * Merge global flashNews with the open thread's live `messages`.
+ */
+function buildFlashCards(
+  flashNews: ChatMessage[],
+  threadMessages: ChatMessage[],
+  filterBot: BotId | null,
+) {
+  const map = new Map<string, ChatMessage>();
+  const consider = (row: ChatMessage) => {
+    if (row.kind !== "news") return;
+    if (!isBotId(row.sender)) return;
+    if (filterBot && row.sender !== filterBot) return;
+    const key = newsKey(row);
+    const existing = map.get(key);
+    if (!existing || row.createdAt > existing.createdAt) map.set(key, row);
+  };
+  for (const row of flashNews) consider(row);
+  for (const row of threadMessages) consider(row);
+  return [...map.values()].sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export function FlashDeck({
   open,
   botId: initialBotId = null,
@@ -55,15 +82,24 @@ export function FlashDeck({
   onClose: () => void;
   onOpenTopics: () => void;
 }) {
-  const { flashNews, ingest, ingesting, askBot, selectChat, profile } = useStore();
+  const { flashNews, messages, ingest, ingesting, askBot, selectChat, profile } = useStore();
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
   const [filterBot, setFilterBot] = useState<BotId | null>(initialBotId ?? null);
   const enabledBots = profile?.enabledBots ?? [];
 
-  const cards = filterBot
-    ? flashNews.filter((row) => row.sender === filterBot)
-    : flashNews;
+  // Keep filter in sync when reopening Flash for a different bot.
+  useEffect(() => {
+    if (!open) return;
+    setFilterBot(initialBotId ?? null);
+    setIndex(0);
+    scroller.current?.scrollTo({ top: 0 });
+  }, [open, initialBotId]);
+
+  const cards = useMemo(
+    () => buildFlashCards(flashNews, messages, filterBot),
+    [flashNews, messages, filterBot],
+  );
   const filterBotMeta = filterBot ? getBot(filterBot) : null;
 
   useEffect(() => {
@@ -89,7 +125,7 @@ export function FlashDeck({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] bg-black"
+          className="flash-shell"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -131,6 +167,7 @@ export function FlashDeck({
               {enabledBots.map((id) => {
                 const bot = getBot(id);
                 const on = filterBot === id;
+                const count = buildFlashCards(flashNews, messages, id).length;
                 return (
                   <button
                     key={id}
@@ -142,6 +179,9 @@ export function FlashDeck({
                   >
                     <BotMark id={id} size="sm" />
                     {titleCaseName(bot?.name ?? id)}
+                    <span className={`tabular text-[10px] ${on ? "text-black/50" : "text-white/45"}`}>
+                      {count}
+                    </span>
                   </button>
                 );
               })}
@@ -158,8 +198,8 @@ export function FlashDeck({
               </p>
               <p className="mt-2 max-w-[280px] text-[15px] leading-relaxed text-[var(--ink-muted)]">
                 {filterBotMeta
-                  ? "Check headlines or add topics for this bot."
-                  : "Check headlines, or add topics so bots know what to pull."}
+                  ? "Open this bot’s chat first, or check headlines."
+                  : "Open a chat with news, then come back — Flash mirrors your threads."}
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 <button
@@ -185,7 +225,7 @@ export function FlashDeck({
             <div ref={scroller} className="flash-deck no-scrollbar">
               {cards.map((message, i) => (
                 <FlashCard
-                  key={`${message.articleUrl || message.id}-${i}`}
+                  key={`${newsKey(message)}-${i}`}
                   message={message}
                   active={i === index}
                   onAsk={(botId) => {
@@ -194,7 +234,7 @@ export function FlashDeck({
                     onClose();
                   }}
                   onOpenDm={(botId) => {
-                    selectChat(`dm-${botId}`);
+                    selectChat(dmChatId(botId));
                     onClose();
                   }}
                 />
@@ -264,9 +304,7 @@ function FlashCard({
               className="flex items-center gap-2 rounded-[var(--radius-full)] bg-black/40 px-2 py-1 backdrop-blur-sm"
             >
               <BotMark id={bot?.id} size="sm" />
-              <span className="pr-1 text-[13px] font-semibold text-white">
-                {askLabel}
-              </span>
+              <span className="pr-1 text-[13px] font-semibold text-white">{askLabel}</span>
             </button>
             {flash ? (
               <span className="rounded-[var(--radius-full)] bg-white/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/85">

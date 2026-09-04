@@ -212,9 +212,20 @@ function stillMatches(message: ChatMessage, preferences?: UserProfile["preferenc
 }
 
 function millis(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (value && typeof value === "object" && "toMillis" in value) {
-    return (value as { toMillis: () => number }).toMillis();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value === "object") {
+    if ("toMillis" in value && typeof (value as { toMillis: () => number }).toMillis === "function") {
+      return (value as { toMillis: () => number }).toMillis();
+    }
+    const seconds = (value as { seconds?: number; _seconds?: number }).seconds
+      ?? (value as { _seconds?: number })._seconds;
+    if (typeof seconds === "number") {
+      const nanos =
+        (value as { nanoseconds?: number; _nanoseconds?: number }).nanoseconds
+        ?? (value as { _nanoseconds?: number })._nanoseconds
+        ?? 0;
+      return seconds * 1000 + Math.floor(nanos / 1e6);
+    }
   }
   return Date.now();
 }
@@ -431,7 +442,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (backend !== "firebase" || !uid || !db) return;
     const firestore = requireDb();
     const userId = uid;
-    const MESSAGE_LIMIT = 200;
+    const MESSAGE_LIMIT = 300;
     const listen = (chatId: string) =>
       onSnapshot(
         query(
@@ -458,20 +469,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setMessageMap((current) => ({ ...current, [chatId]: rows }));
           setHydratedChats((prev) => new Set(prev).add(chatId));
         },
+        (err) => {
+          console.warn(`messages listen failed ${chatId}`, err);
+        },
       );
 
-    // Keep timeline + every enabled bot DM warm so Flash can show the full deck.
+    // Warm every chat we know about so Flash stays in sync with bot DMs + timeline.
     const chatIds = new Set<string>([GROUP_CHAT_ID]);
-    for (const botId of profile?.enabledBots ?? []) {
-      chatIds.add(dmChatId(botId));
-    }
+    for (const chat of chats) chatIds.add(chat.id);
+    for (const botId of profile?.enabledBots ?? []) chatIds.add(dmChatId(botId));
     if (selectedChatId) chatIds.add(selectedChatId);
 
     const unsubs = [...chatIds].map((chatId) => listen(chatId));
     return () => {
       for (const unsub of unsubs) unsub();
     };
-  }, [backend, uid, selectedChatId, profile?.enabledBots]);
+  }, [
+    backend,
+    uid,
+    selectedChatId,
+    // Stabilize array deps so we don't thrash listeners every profile snapshot.
+    (profile?.enabledBots ?? []).join(","),
+    chats.map((chat) => chat.id).join(","),
+  ]);
 
   const selectChat = useCallback(
     async (id: string | null) => {
@@ -979,6 +999,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
           }
           await batch.commit();
+
+          // Optimistic Flash/chat update — don't wait for every onSnapshot to land.
+          const now = Date.now();
+          setMessageMap((current) => {
+            const next: Record<string, ChatMessage[]> = { ...current };
+            for (const item of posted) {
+              const base = {
+                sender: item.botId,
+                text: item.groupText,
+                kind: "news" as const,
+                createdAt: now,
+                articleUrl: item.url,
+                articleTitle: item.title,
+                summary: item.summary || item.groupText,
+                imageUrl: item.imageUrl,
+                matchedKeywords: item.matchedKeywords,
+                sources: item.sources,
+                flash: item.flash,
+              };
+              const groupId = GROUP_CHAT_ID;
+              const dmId = dmChatId(item.botId);
+              const groupMsg: ChatMessage = {
+                ...base,
+                id: `optimistic-group-${item.url}`,
+                chatId: groupId,
+              };
+              const dmMsg: ChatMessage = {
+                ...base,
+                id: `optimistic-dm-${item.url}`,
+                chatId: dmId,
+              };
+              const merge = (chatId: string, msg: ChatMessage) => {
+                const rows = next[chatId] ?? [];
+                const key = (msg.articleUrl || msg.id).toLowerCase();
+                if (rows.some((row) => (row.articleUrl || row.id).toLowerCase() === key)) {
+                  return;
+                }
+                next[chatId] = [...rows, msg];
+              };
+              merge(groupId, groupMsg);
+              merge(dmId, dmMsg);
+            }
+            return next;
+          });
         }
         if (posted.length > 0 && profile?.pushEnabled && pushSubRef.current) {
           const sub = pushSubRef.current;
@@ -1288,16 +1352,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const messages = (selectedChatId ? (messageMap[selectedChatId] ?? []) : []).filter(
         (row) => stillMatches(row, profile?.preferences),
       );
-      // Flash = every fresh news row already loaded in any chat (full doomscroll deck).
-      const enabled = new Set(profile?.enabledBots ?? []);
+      // Flash mirrors every news row loaded in chats (same pool the threads show).
       const flashByKey = new Map<string, ChatMessage>();
       for (const rows of Object.values(messageMap)) {
         for (const row of rows) {
           if (row.kind !== "news") continue;
-          if (!isFreshNews(row.createdAt)) continue;
           if (!isBotId(row.sender)) continue;
-          if (enabled.size > 0 && !enabled.has(row.sender)) continue;
-          const key = (row.articleUrl || `${row.sender}:${row.articleTitle}` || row.id).toLowerCase();
+          const key = (row.articleUrl || `${row.sender}:${row.articleTitle || row.text}` || row.id).toLowerCase();
           const existing = flashByKey.get(key);
           if (!existing || row.createdAt > existing.createdAt) flashByKey.set(key, row);
         }
