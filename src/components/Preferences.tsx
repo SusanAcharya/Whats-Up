@@ -56,10 +56,16 @@ function KeywordComposer({
 
   return (
     <div
-      className="flex gap-2 rounded-[var(--radius-md)] border bg-[var(--elevated)] p-1.5"
-      style={{ borderColor: accent ? `${accent}55` : "var(--hairline)" }}
+      className="flex items-center gap-2 rounded-[var(--radius-md)] border p-1.5"
+      style={{
+        borderColor: accent ? `${accent}55` : "var(--hairline)",
+        background: "var(--elevated)",
+      }}
     >
-      <span className="grid h-11 w-10 place-items-center text-[var(--ink-faint)]" aria-hidden>
+      <span
+        className="grid h-10 w-9 shrink-0 place-items-center text-[var(--ink-faint)]"
+        aria-hidden
+      >
         <IconHash className="h-4 w-4" />
       </span>
       <input
@@ -72,13 +78,17 @@ function KeywordComposer({
           }
         }}
         placeholder={placeholder}
-        className="h-11 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-[var(--ink-faint)]"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        className="h-10 min-w-0 flex-1 bg-transparent px-1 text-[16px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-faint)]"
+        style={{ width: 0 }}
       />
       <button
         type="button"
         onClick={submit}
         disabled={!text.trim()}
-        className="btn-secondary w-auto shrink-0 self-center px-4 text-[13px]"
+        className="h-10 shrink-0 rounded-[var(--radius-sm)] border border-[var(--hairline-strong)] px-3.5 text-[13px] font-semibold text-[var(--ink)] disabled:opacity-35"
       >
         Save
       </button>
