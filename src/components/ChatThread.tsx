@@ -647,6 +647,7 @@ function NewsCard({
                   alt=""
                   loading="lazy"
                   decoding="async"
+                  referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
                   onError={() => setImgFailed(true)}
                 />

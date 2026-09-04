@@ -8,7 +8,7 @@ import { useStore } from "@/lib/store";
 import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { springSoft } from "./motion";
-import { IconBack, IconHash, IconRefresh, IconShare } from "./icons";
+import { IconBack, IconChat, IconHash, IconLink, IconRefresh, IconShare } from "./icons";
 
 async function shareStory(message: ChatMessage) {
   const title = message.articleTitle?.trim() || "Story from What's Up";
@@ -37,6 +37,41 @@ async function shareStory(message: ChatMessage) {
 
 function clock(ts: number) {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function useStoryImage(message: ChatMessage, active: boolean) {
+  const [fetchedUrl, setFetchedUrl] = useState<string | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const tried = useRef(false);
+  const imageUrl = message.imageUrl || fetchedUrl;
+
+  useEffect(() => {
+    if (!active || message.imageUrl || fetchedUrl || failed || tried.current || !message.articleUrl) {
+      return;
+    }
+    tried.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/meta?url=${encodeURIComponent(message.articleUrl!)}`);
+        if (!response.ok) {
+          if (!cancelled) setFailed(true);
+          return;
+        }
+        const data = (await response.json()) as { imageUrl?: string | null };
+        if (cancelled) return;
+        if (data.imageUrl) setFetchedUrl(data.imageUrl);
+        else setFailed(true);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, failed, fetchedUrl, message.articleUrl, message.imageUrl]);
+
+  return { imageUrl, onError: () => setFailed(true), failed };
 }
 
 export function FlashDeck({
@@ -70,26 +105,26 @@ export function FlashDeck({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] flex flex-col bg-[var(--canvas)]"
+          className="fixed inset-0 z-[60] flex flex-col bg-black"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 18 }}
           transition={springSoft}
         >
-          <header className="app-header absolute inset-x-0 top-0 z-20 flex items-center justify-between px-2 pb-2">
-            <button type="button" onClick={onClose} className="btn-icon" aria-label="Back">
+          <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-2 pb-2 pt-[var(--safe-top)]">
+            <button type="button" onClick={onClose} className="btn-icon bg-black/30 backdrop-blur-sm" aria-label="Back">
               <IconBack className="h-5 w-5" />
             </button>
-            <div className="text-center">
-              <p className="text-[15px] font-semibold tracking-[-0.02em]">Flash</p>
-              <p className="tabular text-[11px] text-[var(--ink-faint)]">
+            <div className="rounded-[var(--radius-full)] bg-black/35 px-3 py-1 text-center backdrop-blur-sm">
+              <p className="text-[13px] font-semibold tracking-[-0.02em]">Flash</p>
+              <p className="tabular text-[10px] text-white/60">
                 {flashNews.length > 0 ? `${index + 1} / ${flashNews.length}` : "empty"}
               </p>
             </div>
             <button
               type="button"
               onClick={() => void ingest("manual")}
-              className="btn-icon"
+              className="btn-icon bg-black/30 backdrop-blur-sm"
               aria-label="Refresh"
             >
               <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
@@ -137,12 +172,6 @@ export function FlashDeck({
               ))}
             </div>
           )}
-
-          {flashNews.length > 1 ? (
-            <p className="pointer-events-none absolute inset-x-0 bottom-[calc(var(--safe-bottom)+12px)] z-20 text-center text-[11px] text-[var(--ink-faint)]">
-              Swipe up for next · down for previous
-            </p>
-          ) : null}
         </motion.div>
       ) : null}
     </AnimatePresence>
@@ -160,107 +189,123 @@ function FlashCard({
   onAsk: (botId: BotId) => void;
   onOpenDm: (botId: BotId) => void;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
   const [shareHint, setShareHint] = useState<string | null>(null);
   const bot = isBotId(message.sender) ? getBot(message.sender) : undefined;
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
-  const showImage = Boolean(message.imageUrl && !imgFailed);
+  const { imageUrl, onError, failed } = useStoryImage(message, active);
+  const showImage = Boolean(imageUrl && !failed);
   const source =
     message.sources && message.sources.length > 1
       ? `${message.sources[0]} +${message.sources.length - 1}`
       : message.sources?.[0] || "source";
   const flash =
     message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
+  const askLabel = titleCaseName(bot?.name ?? "bot");
 
   return (
     <article className={`flash-slide ${active ? "flash-slide-active" : ""}`}>
-      <div className="flash-card">
-        <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="flash-card relative">
+        <div className="absolute inset-0 overflow-hidden">
           {showImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={message.imageUrl}
+              src={imageUrl}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-              onError={() => setImgFailed(true)}
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={onError}
             />
           ) : (
             <div
-              className="absolute inset-0"
+              className="h-full w-full"
               style={{
-                background: `radial-gradient(ellipse at 30% 20%, ${bot?.color ?? "#e8956f"}33, transparent 55%), linear-gradient(160deg, #16161a, #0a0a0c)`,
+                background: `radial-gradient(ellipse at 30% 20%, ${bot?.color ?? "#e8956f"}44, transparent 55%), linear-gradient(160deg, #1a1a1e, #0a0a0c)`,
               }}
             />
           )}
           <div className="flash-card-scrim" aria-hidden />
-          <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-6 pt-24">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => bot?.id && onOpenDm(bot.id)}
-                className="flex items-center gap-2 rounded-[var(--radius-full)] bg-black/35 px-2 py-1 backdrop-blur-sm"
-              >
-                <BotMark id={bot?.id} size="sm" />
-                <span className="pr-1 text-[13px] font-semibold" style={{ color: bot?.color }}>
-                  {titleCaseName(bot?.name ?? "bot")}
-                </span>
-              </button>
-              {flash ? (
-                <span className="rounded-[var(--radius-full)] bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80">
-                  {flash}
-                </span>
-              ) : null}
-              <span className="tabular text-[11px] text-white/55">{clock(message.createdAt)}</span>
-            </div>
-            {title ? (
-              <h2 className="text-[26px] font-semibold leading-[1.15] tracking-[-0.03em] text-white">
-                {title}
-              </h2>
-            ) : null}
-            <p
-              className={`mt-3 text-[16px] leading-relaxed text-white/85 ${title ? "line-clamp-5" : "line-clamp-8"}`}
-            >
-              {body}
-            </p>
-            <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-white/45">
-              {source}
-            </p>
-          </div>
         </div>
 
-        <div className="flash-card-actions">
+        <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-[calc(var(--safe-bottom)+20px)] pr-[76px] pt-28">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => bot?.id && onOpenDm(bot.id)}
+              className="flex items-center gap-2 rounded-[var(--radius-full)] bg-black/40 px-2 py-1 backdrop-blur-sm"
+            >
+              <BotMark id={bot?.id} size="sm" />
+              <span className="pr-1 text-[13px] font-semibold text-white">
+                {askLabel}
+              </span>
+            </button>
+            {flash ? (
+              <span className="rounded-[var(--radius-full)] bg-white/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/85">
+                {flash}
+              </span>
+            ) : null}
+            <span className="tabular text-[11px] text-white/55">{clock(message.createdAt)}</span>
+          </div>
+          {title ? (
+            <h2 className="text-[24px] font-semibold leading-[1.15] tracking-[-0.03em] text-white drop-shadow-sm">
+              {title}
+            </h2>
+          ) : null}
+          <p
+            className={`mt-2.5 text-[15px] leading-relaxed text-white/88 ${title ? "line-clamp-4" : "line-clamp-7"}`}
+          >
+            {body}
+          </p>
+          <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-white/45">
+            {source}
+          </p>
+        </div>
+
+        <div className="flash-side-rail">
           <button
             type="button"
+            className="flash-side-btn"
+            aria-label="Share"
             onClick={async () => {
               const result = await shareStory(message);
               if (result === "copied") {
                 setShareHint("Copied");
-                window.setTimeout(() => setShareHint(null), 1600);
+                window.setTimeout(() => setShareHint(null), 1400);
               }
             }}
-            className="btn-secondary min-h-[44px] flex-1 gap-2"
           >
-            <IconShare className="h-4 w-4" />
-            {shareHint ?? "Share"}
+            <span className="flash-side-icon">
+              <IconShare className="h-6 w-6" />
+            </span>
+            <span className="flash-side-label">{shareHint ?? "Share"}</span>
           </button>
+
           {message.articleUrl ? (
             <a
               href={message.articleUrl}
               target="_blank"
               rel="noreferrer"
-              className="btn-secondary min-h-[44px] flex-1"
+              className="flash-side-btn"
+              aria-label="Read article"
             >
-              Read
+              <span className="flash-side-icon">
+                <IconLink className="h-6 w-6" />
+              </span>
+              <span className="flash-side-label">Read</span>
             </a>
           ) : null}
+
           {bot?.id ? (
             <button
               type="button"
+              className="flash-side-btn"
+              aria-label={`Ask ${askLabel}`}
               onClick={() => onAsk(bot.id)}
-              className="btn-primary min-h-[44px] flex-1 text-[14px]"
             >
-              Ask {titleCaseName(bot.name)}
+              <span className="flash-side-icon">
+                <IconChat className="h-6 w-6" />
+              </span>
+              <span className="flash-side-label">Ask</span>
             </button>
           ) : null}
         </div>

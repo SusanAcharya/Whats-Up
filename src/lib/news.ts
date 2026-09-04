@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
 import type { BotId } from "./types";
-import { imageFromRssItem } from "./images";
+import { imageFromRssItem, publisherUrlFromRss } from "./images";
 
 const parser = new Parser({
   timeout: 8000,
@@ -84,10 +84,16 @@ export async function fetchFeed(url: string, botId: BotId): Promise<RawStory[]> 
           content: item.content,
           "content:encoded": (item as { contentEncoded?: string }).contentEncoded,
         });
+        const publisher = publisherUrlFromRss({
+          link,
+          content: item.content,
+          contentSnippet: item.contentSnippet,
+          "content:encoded": (item as { contentEncoded?: string }).contentEncoded,
+        });
         const story: RawStory = {
           botId,
           title: parsed.title,
-          url: link,
+          url: publisher || link,
           source: parsed.source || sourceName,
           snippet,
           publishedAt: item.isoDate ? Date.parse(item.isoDate) : Date.now(),

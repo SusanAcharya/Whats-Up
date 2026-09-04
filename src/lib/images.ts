@@ -36,26 +36,92 @@ export function imageFromRssItem(item: {
   return undefined;
 }
 
-export async function fetchArticleMeta(url: string): Promise<{ imageUrl?: string; excerpt?: string }> {
+/** Prefer a publisher URL when Google News wraps the story. */
+export function publisherUrlFromRss(item: {
+  link?: string;
+  content?: string;
+  contentSnippet?: string;
+  "content:encoded"?: string;
+}): string | undefined {
+  const html = `${item.content ?? ""} ${item["content:encoded"] ?? ""} ${item.contentSnippet ?? ""}`;
+  const anchors = [...html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]);
+  for (const href of anchors) {
+    try {
+      const host = new URL(href).hostname.replace(/^www\./, "");
+      if (host.includes("google.com") || host.includes("gstatic.com")) continue;
+      return href;
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined;
+}
+
+function isGoogleNewsUrl(url: string) {
+  try {
+    const host = new URL(url).hostname;
+    return host.includes("news.google.") || host === "news.google.com";
+  } catch {
+    return false;
+  }
+}
+
+async function resolveArticleUrl(url: string): Promise<string> {
+  if (!isGoogleNewsUrl(url)) return url;
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-      signal: AbortSignal.timeout(2800),
+      signal: AbortSignal.timeout(4500),
       redirect: "follow",
     });
-    if (!response.ok) return {};
-    const html = (await response.text()).slice(0, 90_000);
+    const finalUrl = response.url || url;
+    if (!isGoogleNewsUrl(finalUrl)) return finalUrl;
+    const html = (await response.text()).slice(0, 120_000);
+    const candidates = [
+      html.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*data-n-au/i)?.[1],
+      html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)?.[1],
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i)?.[1],
+      ...[...html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]),
+    ].filter(Boolean) as string[];
+    for (const href of candidates) {
+      try {
+        const host = new URL(href).hostname.replace(/^www\./, "");
+        if (host.includes("google.com") || host.includes("gstatic.com")) continue;
+        return href;
+      } catch {
+        /* ignore */
+      }
+    }
+    return finalUrl;
+  } catch {
+    return url;
+  }
+}
+
+export async function fetchArticleMeta(url: string): Promise<{ imageUrl?: string; excerpt?: string; resolvedUrl?: string }> {
+  try {
+    const target = await resolveArticleUrl(url);
+    const response = await fetch(target, {
+      headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
+      signal: AbortSignal.timeout(5000),
+      redirect: "follow",
+    });
+    if (!response.ok) return { resolvedUrl: target };
+    const html = (await response.text()).slice(0, 120_000);
     const image =
       metaContent(html, "og:image") ||
-      metaContent(html, "twitter:image");
+      metaContent(html, "twitter:image") ||
+      metaContent(html, "og:image:secure_url");
     const excerpt =
       metaContent(html, "og:description") ||
       metaContent(html, "twitter:description") ||
       metaName(html, "description") ||
       firstParagraph(html);
+    const absoluteImage = image ? absolutize(image, response.url || target) : undefined;
     return {
-      imageUrl: image && looksLikeImage(image) ? image : undefined,
+      imageUrl: absoluteImage && looksLikeImage(absoluteImage) ? absoluteImage : undefined,
       excerpt: excerpt ? decodeEntities(excerpt).slice(0, 420) : undefined,
+      resolvedUrl: response.url || target,
     };
   } catch {
     return {};
@@ -67,15 +133,24 @@ export async function enrichStories<T extends { url: string; imageUrl?: string; 
 ): Promise<T[]> {
   return Promise.all(
     stories.map(async (story) => {
-      if (story.imageUrl && story.excerpt) return story;
+      if (story.imageUrl) return story;
       const meta = await fetchArticleMeta(story.url);
       return {
         ...story,
         imageUrl: story.imageUrl || meta.imageUrl,
         excerpt: story.excerpt || meta.excerpt,
+        ...(meta.resolvedUrl && !story.imageUrl ? { url: meta.resolvedUrl } : {}),
       };
     }),
   );
+}
+
+function absolutize(maybeRelative: string, base: string) {
+  try {
+    return new URL(maybeRelative, base).toString();
+  } catch {
+    return maybeRelative;
+  }
 }
 
 function metaContent(html: string, property: string) {
