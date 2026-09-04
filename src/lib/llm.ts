@@ -38,6 +38,10 @@ function stripThink(text: string) {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
+export function stripLlmThink(text: string) {
+  return stripThink(text);
+}
+
 function isRateLimitBody(body: string) {
   return /rate_limit|tokens per day|TPD|429/i.test(body);
 }

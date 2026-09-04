@@ -5,6 +5,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { dmChatId, getBot, isBotId } from "@/lib/bots";
 import { titleCaseName } from "@/lib/notifications";
 import { useStore } from "@/lib/store";
+import {
+  newsDedupeKey,
+  shareStory,
+  storyClock,
+  storyFlashLabel,
+  storySourceLabel,
+} from "@/lib/story-helpers";
 import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { springSoft } from "./motion";
@@ -12,43 +19,8 @@ import { IconBack, IconChat, IconHash, IconLink, IconRefresh, IconShare } from "
 import { useHiResStoryImage } from "@/lib/use-hires-image";
 import { readHrefForMessage } from "@/lib/article-link";
 
-async function shareStory(message: ChatMessage) {
-  const title = message.articleTitle?.trim() || "Story from What's Up";
-  const text = (message.summary || message.text).trim();
-  const url = readHrefForMessage(message);
-  try {
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      await navigator.share({
-        title,
-        text: text.slice(0, 280),
-        ...(url ? { url } : {}),
-      });
-      return "shared" as const;
-    }
-    const clip = url || `${title}\n\n${text}`;
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(clip);
-      return "copied" as const;
-    }
-    return null;
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") return null;
-    return null;
-  }
-}
-
-function clock(ts: number) {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-
 function useStoryImage(message: ChatMessage, active: boolean) {
   return useHiResStoryImage(message.articleUrl, message.imageUrl, active);
-}
-
-function newsKey(row: ChatMessage) {
-  const title = (row.articleTitle || row.text || "").trim().toLowerCase().slice(0, 120);
-  if (title && isBotId(row.sender)) return `${row.sender}:${title}`;
-  return (row.articleUrl || row.id).toLowerCase();
 }
 
 /**
@@ -65,7 +37,7 @@ function buildFlashCards(
     if (row.kind !== "news") return;
     if (!isBotId(row.sender)) return;
     if (filterBot && row.sender !== filterBot) return;
-    const key = newsKey(row);
+    const key = newsDedupeKey(row);
     const existing = map.get(key);
     if (!existing || row.createdAt > existing.createdAt) map.set(key, row);
   };
@@ -228,7 +200,7 @@ export function FlashDeck({
             <div ref={scroller} className="flash-deck no-scrollbar">
               {cards.map((message, i) => (
                 <FlashCard
-                  key={`${newsKey(message)}-${i}`}
+                  key={`${newsDedupeKey(message)}-${i}`}
                   message={message}
                   active={i === index}
                   onAsk={(botId) => {
@@ -267,12 +239,8 @@ function FlashCard({
   const body = (message.summary || message.text).trim();
   const { imageUrl, onError } = useStoryImage(message, active);
   const showImage = Boolean(imageUrl);
-  const source =
-    message.sources && message.sources.length > 1
-      ? `${message.sources[0]} +${message.sources.length - 1}`
-      : message.sources?.[0] || "source";
-  const flash =
-    message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
+  const source = storySourceLabel(message);
+  const flash = storyFlashLabel(message.flash);
   const askLabel = titleCaseName(bot?.name ?? "bot");
   const readHref = readHrefForMessage(message);
 
@@ -315,7 +283,7 @@ function FlashCard({
                 {flash}
               </span>
             ) : null}
-            <span className="tabular text-[11px] text-white/55">{clock(message.createdAt)}</span>
+            <span className="tabular text-[11px] text-white/55">{storyClock(message.createdAt)}</span>
           </div>
           {title ? (
             <h2 className="text-[24px] font-semibold leading-[1.15] tracking-[-0.03em] text-white drop-shadow-sm">

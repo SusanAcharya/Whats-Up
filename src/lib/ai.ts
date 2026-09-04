@@ -1,7 +1,7 @@
 import type { BotId, IngestItem } from "./types";
 import { getBot } from "./bots";
 import { titleTokens } from "./dedupe";
-import { estimateTokens, llmComplete } from "./llm";
+import { estimateTokens, llmComplete, stripLlmThink, type ChatTurn } from "./llm";
 import type { FlashStory } from "./pipeline";
 
 /** Cap how many stories pay for an LLM rewrite per ingest. */
@@ -9,14 +9,8 @@ const LLM_STORY_CAP = 4;
 /** Skip LLM when local excerpt already makes a decent blurb. */
 const LOCAL_EXCERPT_MIN = 60;
 
-type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
-
-function stripThink(text: string) {
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-}
-
 function extractJson(text: string): unknown {
-  const trimmed = stripThink(text);
+  const trimmed = stripLlmThink(text);
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = fenced ? fenced[1] : trimmed;
   const start = raw.indexOf("{") >= 0 ? raw.indexOf("{") : raw.indexOf("[");
@@ -328,15 +322,9 @@ Reply like iMessage: 2-3 short sentences, sentence case. No catchphrases. ${
 
   try {
     const { text } = await llmComplete(turns, { purpose: "chat", temperature: 0.55 });
-    return stripThink(text).slice(0, 900);
+    return stripLlmThink(text).slice(0, 900);
   } catch (error) {
     console.warn("chat fallback", error);
     return "Wifi in my brain just lagged. Ask me again in a sec.";
   }
-}
-
-/** @deprecated use llmComplete — kept so accidental imports don't break */
-export async function complete(messages: ChatTurn[], temperature = 0.7): Promise<string> {
-  const { text } = await llmComplete(messages, { purpose: "chat", temperature });
-  return text;
 }

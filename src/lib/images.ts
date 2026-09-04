@@ -39,6 +39,14 @@ export function looksLikeArticleUrl(url: string) {
   }
 }
 
+/** Persist / display gate for story links — one policy for ingest + Read. */
+export function sanitizeArticleUrl(url?: string) {
+  if (!url) return undefined;
+  const trimmed = url.trim().slice(0, 2000);
+  if (!/^https?:\/\//i.test(trimmed) || trimmed.length < 8) return undefined;
+  return looksLikeArticleUrl(trimmed) ? trimmed : undefined;
+}
+
 /** Guess pixel width from URL path/query (RSS thumbs are often 120–320). */
 export function estimateImageWidth(url: string): number {
   try {

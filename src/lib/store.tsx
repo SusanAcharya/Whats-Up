@@ -50,6 +50,8 @@ import {
   titleCaseName,
 } from "./notifications";
 import { isFreshNews, newsCutoff } from "./retention";
+import { sanitizeArticleUrl } from "./images";
+import { newsDedupeKey } from "./story-helpers";
 import type {
   BotId,
   Chat,
@@ -211,47 +213,11 @@ function stillMatches(message: ChatMessage, preferences?: UserProfile["preferenc
   return matchKeywords(text, rules).length > 0;
 }
 
-/** Prefer title+bot so broken shared CDN URLs don't collapse the Flash deck. */
-function newsDedupeKey(row: {
-  sender: string;
-  articleUrl?: string;
-  articleTitle?: string;
-  text?: string;
-  id?: string;
-}) {
-  const title = (row.articleTitle || row.text || "").trim().toLowerCase().slice(0, 120);
-  if (title) return `${row.sender}:${title}`;
-  const url = (row.articleUrl || "").toLowerCase();
-  if (url && !url.includes("googleusercontent.com") && !/=w\d{1,3}/i.test(url)) return url;
-  return (row.id || `${row.sender}:${url}`).toLowerCase();
-}
-
 function sanitizeHttpUrl(url?: string) {
   if (!url) return undefined;
   const trimmed = url.trim().slice(0, 2000);
   if (!/^https?:\/\//i.test(trimmed) || trimmed.length < 8) return undefined;
   return trimmed;
-}
-
-function sanitizeArticleUrl(url?: string) {
-  const cleaned = sanitizeHttpUrl(url);
-  if (!cleaned) return undefined;
-  // Reject Google favicons / CDN thumbs that were once mistaken for story links.
-  try {
-    const host = new URL(cleaned).hostname.replace(/^www\./, "");
-    if (
-      host.includes("googleusercontent.com") ||
-      host.includes("ggpht.com") ||
-      host.includes("gstatic.com") ||
-      host.includes("google-analytics.com") ||
-      /=w\d{1,3}($|\?)/i.test(cleaned)
-    ) {
-      return undefined;
-    }
-  } catch {
-    return undefined;
-  }
-  return cleaned;
 }
 
 function millis(value: unknown): number {

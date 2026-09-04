@@ -3,9 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { isLikelyLowRes, upgradeImageUrl } from "@/lib/images";
 
+function isGoogleNewsArticle(url?: string) {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.includes("news.google.");
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Prefer stored art, upgrade CDN thumbs, and fetch article OG image when the
- * saved URL looks like a tiny RSS thumbnail.
+ * Prefer stored art, upgrade CDN thumbs client-side.
+ * Only hit /api/meta when art is missing — and skip expensive Google News
+ * decode when we already have a usable (even low-res) thumb.
  */
 export function useHiResStoryImage(
   articleUrl: string | undefined,
@@ -26,8 +36,10 @@ export function useHiResStoryImage(
 
   useEffect(() => {
     if (!enabled || failed || !articleUrl) return;
-    const needsUpgrade = !displayUrl || isLikelyLowRes(displayUrl);
-    if (!needsUpgrade) return;
+    // Already have cover art — don't re-fetch OG (ingest already enriched when possible).
+    if (displayUrl && !isLikelyLowRes(displayUrl)) return;
+    // Google News decode is costly; only attempt when we have zero image.
+    if (displayUrl && isGoogleNewsArticle(articleUrl)) return;
     if (tried.current === articleUrl) return;
     tried.current = articleUrl;
     let cancelled = false;
@@ -40,7 +52,6 @@ export function useHiResStoryImage(
         const upgraded = upgradeImageUrl(data.imageUrl);
         setDisplayUrl((current) => {
           if (!current) return upgraded;
-          // Keep whichever estimates larger
           return isLikelyLowRes(current) ? upgraded : current;
         });
       } catch {

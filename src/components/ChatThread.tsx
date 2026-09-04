@@ -12,13 +12,15 @@ import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
 import { useHiResStoryImage } from "@/lib/use-hires-image";
 import { readHrefForMessage } from "@/lib/article-link";
+import {
+  shareStory,
+  storyClock,
+  storyFlashLabel,
+  storySourceLabel,
+} from "@/lib/story-helpers";
 import { IconBack, IconCards, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
-
-function clock(ts: number) {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
 
 function dayLabel(ts: number) {
   const date = new Date(ts);
@@ -548,38 +550,13 @@ function Row({
           >
             <p className="whitespace-pre-wrap">
               {message.text}
-              {!withNext ? <span className="msg-time">{clock(message.createdAt)}</span> : null}
+              {!withNext ? <span className="msg-time">{storyClock(message.createdAt)}</span> : null}
             </p>
           </div>
         </div>
       </div>
     </MessageEnter>
   );
-}
-
-async function shareStory(message: ChatMessage) {
-  const title = message.articleTitle?.trim() || "Story from What's Up";
-  const text = message.text.trim();
-  const url = readHrefForMessage(message);
-  try {
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      await navigator.share({
-        title,
-        text: text.slice(0, 280),
-        ...(url ? { url } : {}),
-      });
-      return "shared" as const;
-    }
-    const clip = url || `${title}\n\n${text}`;
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(clip);
-      return "copied" as const;
-    }
-    return null;
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") return null;
-    return null;
-  }
 }
 
 function NewsCard({
@@ -605,12 +582,8 @@ function NewsCard({
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
   const showTitle = Boolean(title && !sameCopy(title, body));
-  const sourceLabel =
-    message.sources && message.sources.length > 1
-      ? `${message.sources[0]} +${message.sources.length - 1}`
-      : message.sources?.[0] || "source";
-  const flash =
-    message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
+  const sourceLabel = storySourceLabel(message);
+  const flash = storyFlashLabel(message.flash);
   const keywords = message.matchedKeywords ?? [];
   const botId = author?.id;
   const showImage = Boolean(imageUrl);
@@ -645,7 +618,7 @@ function NewsCard({
                 {flash}
               </span>
             ) : null}
-            <span className="tabular text-[11px] text-[var(--ink-faint)]">{clock(message.createdAt)}</span>
+            <span className="tabular text-[11px] text-[var(--ink-faint)]">{storyClock(message.createdAt)}</span>
           </header>
           <motion.div
             className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)]"
