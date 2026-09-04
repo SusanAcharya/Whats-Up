@@ -89,10 +89,10 @@ export function FlashDeck({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] flex flex-col bg-black"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 18 }}
+          className="fixed inset-0 z-[60] flex h-dvh max-h-dvh flex-col overflow-hidden bg-black"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={springSoft}
         >
           <header className="absolute inset-x-0 top-0 z-30 px-2 pb-2 pt-[var(--safe-top)]">
@@ -185,7 +185,7 @@ export function FlashDeck({
             <div ref={scroller} className="flash-deck no-scrollbar">
               {cards.map((message, i) => (
                 <FlashCard
-                  key={message.id}
+                  key={`${message.articleUrl || message.id}-${i}`}
                   message={message}
                   active={i === index}
                   onAsk={(botId) => {

@@ -452,14 +452,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setHydratedChats((prev) => new Set(prev).add(chatId));
         },
       );
-    const unsubGroup = listen(GROUP_CHAT_ID);
-    const unsubSelected =
-      selectedChatId && selectedChatId !== GROUP_CHAT_ID ? listen(selectedChatId) : undefined;
+
+    // Keep timeline + every enabled bot DM warm so Flash can show the full deck.
+    const chatIds = new Set<string>([GROUP_CHAT_ID]);
+    for (const botId of profile?.enabledBots ?? []) {
+      chatIds.add(dmChatId(botId));
+    }
+    if (selectedChatId) chatIds.add(selectedChatId);
+
+    const unsubs = [...chatIds].map((chatId) => listen(chatId));
     return () => {
-      unsubGroup();
-      unsubSelected?.();
+      for (const unsub of unsubs) unsub();
     };
-  }, [backend, uid, selectedChatId]);
+  }, [backend, uid, selectedChatId, profile?.enabledBots]);
 
   const selectChat = useCallback(
     async (id: string | null) => {
