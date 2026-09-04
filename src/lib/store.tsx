@@ -226,6 +226,13 @@ function newsDedupeKey(row: {
   return (row.id || `${row.sender}:${url}`).toLowerCase();
 }
 
+function sanitizeHttpUrl(url?: string) {
+  if (!url) return undefined;
+  const trimmed = url.trim().slice(0, 2000);
+  if (!/^https?:\/\//i.test(trimmed) || trimmed.length < 8) return undefined;
+  return trimmed;
+}
+
 function millis(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object") {
@@ -980,14 +987,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
 
           for (const item of posted) {
+            const articleUrl = sanitizeHttpUrl(item.url);
+            const imageUrl = sanitizeHttpUrl(item.imageUrl);
             const payload = {
               sender: item.botId,
               text: item.groupText.slice(0, 4000),
               kind: "news" as const,
-              articleUrl: item.url.slice(0, 2000),
               articleTitle: item.title.slice(0, 300),
               summary: (item.summary || item.groupText).slice(0, 400),
-              ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 2000) } : {}),
+              ...(articleUrl ? { articleUrl } : {}),
+              ...(imageUrl ? { imageUrl } : {}),
               ...(item.matchedKeywords?.length
                 ? { matchedKeywords: item.matchedKeywords.slice(0, 12) }
                 : {}),
@@ -1007,24 +1016,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
             touchChat(dmId, preview(item.groupText), selectedRef.current !== dmId);
 
-            batch.set(doc(firestore, "users", userId, "seen", seenId(item.url)), {
-              url: item.url,
-              botId: item.botId,
-              createdAt: serverTimestamp(),
-              title: item.title.slice(0, 300),
-            });
+            if (articleUrl) {
+              batch.set(doc(firestore, "users", userId, "seen", seenId(articleUrl)), {
+                url: articleUrl,
+                botId: item.botId,
+                createdAt: serverTimestamp(),
+                title: item.title.slice(0, 300),
+              });
+            }
             lastNewsRef.current[item.botId] = { title: item.title, text: item.groupText };
           }
 
           // One write per chat doc — Firestore rejects multiple updates to the same doc in a batch.
           for (const [chatId, touch] of chatTouches) {
+            const chatRef = doc(firestore, "users", userId, "chats", chatId);
             const update: Record<string, unknown> = {
-              lastMessage: touch.lastMessage,
+              lastMessage: touch.lastMessage.slice(0, 400),
               lastMessageAt: serverTimestamp(),
             };
             if (touch.clearUnread) update.unread = 0;
             else if (touch.bump > 0) update.unread = increment(touch.bump);
-            batch.set(doc(firestore, "users", userId, "chats", chatId), update, { merge: true });
+            // Prefer update so we never create a half-empty chat doc (rules require type/title).
+            batch.update(chatRef, update);
           }
 
           for (const item of skipped) {
