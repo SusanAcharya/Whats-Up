@@ -11,6 +11,7 @@ import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
 import { useHiResStoryImage } from "@/lib/use-hires-image";
+import { readHrefForMessage } from "@/lib/article-link";
 import { IconBack, IconCards, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
@@ -559,7 +560,7 @@ function Row({
 async function shareStory(message: ChatMessage) {
   const title = message.articleTitle?.trim() || "Story from What's Up";
   const text = message.text.trim();
-  const url = message.articleUrl;
+  const url = readHrefForMessage(message);
   try {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       await navigator.share({
@@ -614,6 +615,7 @@ function NewsCard({
   const keywords = message.matchedKeywords ?? [];
   const botId = author?.id;
   const showImage = Boolean(imageUrl);
+  const readHref = readHrefForMessage(message);
 
   async function onShare() {
     const result = await shareStory(message);
@@ -688,9 +690,9 @@ function NewsCard({
                 </div>
               ) : null}
             </div>
-            {message.articleUrl ? (
+            {readHref ? (
               <a
-                href={message.articleUrl}
+                href={readHref}
                 target="_blank"
                 rel="noreferrer"
                 className="group flex items-center justify-between gap-3 hairline-t px-3.5 py-2.5 transition active:bg-[var(--panel)]"

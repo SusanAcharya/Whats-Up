@@ -14,7 +14,7 @@ function looksLikeImage(url: string) {
   }
 }
 
-function looksLikeArticleUrl(url: string) {
+export function looksLikeArticleUrl(url: string) {
   try {
     const parsed = new URL(url);
     if (!/^https?:$/.test(parsed.protocol)) return false;

@@ -10,11 +10,12 @@ import { BotMark } from "./BotMark";
 import { springSoft } from "./motion";
 import { IconBack, IconChat, IconHash, IconLink, IconRefresh, IconShare } from "./icons";
 import { useHiResStoryImage } from "@/lib/use-hires-image";
+import { readHrefForMessage } from "@/lib/article-link";
 
 async function shareStory(message: ChatMessage) {
   const title = message.articleTitle?.trim() || "Story from What's Up";
   const text = (message.summary || message.text).trim();
-  const url = message.articleUrl;
+  const url = readHrefForMessage(message);
   try {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       await navigator.share({
@@ -273,6 +274,7 @@ function FlashCard({
   const flash =
     message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
   const askLabel = titleCaseName(bot?.name ?? "bot");
+  const readHref = readHrefForMessage(message);
 
   return (
     <article className={`flash-slide ${active ? "flash-slide-active" : ""}`}>
@@ -349,9 +351,9 @@ function FlashCard({
             <span className="flash-side-label">{shareHint ?? "Share"}</span>
           </button>
 
-          {message.articleUrl ? (
+          {readHref ? (
             <a
-              href={message.articleUrl}
+              href={readHref}
               target="_blank"
               rel="noreferrer"
               className="flash-side-btn"

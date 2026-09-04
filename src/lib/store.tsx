@@ -233,6 +233,27 @@ function sanitizeHttpUrl(url?: string) {
   return trimmed;
 }
 
+function sanitizeArticleUrl(url?: string) {
+  const cleaned = sanitizeHttpUrl(url);
+  if (!cleaned) return undefined;
+  // Reject Google favicons / CDN thumbs that were once mistaken for story links.
+  try {
+    const host = new URL(cleaned).hostname.replace(/^www\./, "");
+    if (
+      host.includes("googleusercontent.com") ||
+      host.includes("ggpht.com") ||
+      host.includes("gstatic.com") ||
+      host.includes("google-analytics.com") ||
+      /=w\d{1,3}($|\?)/i.test(cleaned)
+    ) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return cleaned;
+}
+
 function millis(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object") {
@@ -269,7 +290,9 @@ function messageFromDoc(chatId: string, id: string, data: Record<string, unknown
     text: typeof data.text === "string" ? data.text : "",
     createdAt: millis(data.createdAt),
     kind: (data.kind ?? "chat") as MessageKind,
-    articleUrl: typeof data.articleUrl === "string" ? data.articleUrl : undefined,
+    articleUrl: sanitizeArticleUrl(
+      typeof data.articleUrl === "string" ? data.articleUrl : undefined,
+    ),
     articleTitle: typeof data.articleTitle === "string" ? data.articleTitle : undefined,
     summary: typeof data.summary === "string" ? data.summary : undefined,
     imageUrl: typeof data.imageUrl === "string" ? data.imageUrl : undefined,
@@ -987,7 +1010,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
 
           for (const item of posted) {
-            const articleUrl = sanitizeHttpUrl(item.url);
+            const articleUrl = sanitizeArticleUrl(item.url);
             const imageUrl = sanitizeHttpUrl(item.imageUrl);
             const payload = {
               sender: item.botId,
