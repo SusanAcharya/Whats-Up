@@ -36,6 +36,7 @@ service cloud.firestore {
     //   - kind: string (required, 'news' | 'chat' | 'system')
     //   - articleUrl: string (optional, http/https)
     //   - articleTitle: string (optional, 1-300)
+    //   - summary: string (optional, 1-400) - clean Flash blurb
     //   - imageUrl: string (optional, http/https)
     //   - matchedKeywords: list<string> (optional, max 12)
     //   - sources: list<string> (optional, max 8)
@@ -206,6 +207,16 @@ service cloud.firestore {
         );
     }
 
+    function isValidChatUpdate() {
+      // Keep type/botId immutable on updates.
+      return isValidChat()
+        && request.resource.data.type == resource.data.type
+        && (
+          !('botId' in resource.data)
+          || request.resource.data.botId == resource.data.botId
+        );
+    }
+
     function isValidOptionalStringList(field, maxItems) {
       return !(field in request.resource.data)
         || (
@@ -222,6 +233,7 @@ service cloud.firestore {
           'kind',
           'articleUrl',
           'articleTitle',
+          'summary',
           'imageUrl',
           'matchedKeywords',
           'sources',
@@ -238,6 +250,7 @@ service cloud.firestore {
         && isValidOptionalUrl('articleUrl')
         && isValidOptionalUrl('imageUrl')
         && isValidOptionalString('articleTitle', 1, 300)
+        && isValidOptionalString('summary', 1, 400)
         && isValidOptionalStringList('matchedKeywords', 12)
         && isValidOptionalStringList('sources', 8)
         && (
@@ -289,7 +302,7 @@ service cloud.firestore {
       match /chats/{chatId} {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidChat();
-        allow update: if isOwner(userId) && isValidChat();
+        allow update: if isOwner(userId) && isValidChatUpdate();
         allow delete: if isOwner(userId);
 
         match /messages/{messageId} {
