@@ -1,17 +1,13 @@
 import type { BotId, IngestItem } from "./types";
 import { getBot } from "./bots";
 import { titleTokens } from "./dedupe";
+import { estimateTokens, llmComplete } from "./llm";
 import type { FlashStory } from "./pipeline";
 
-const GROQ_MODELS = [
-  "groq/compound-mini",
-  "openai/gpt-oss-20b",
-];
-
-const OPENROUTER_MODELS = [
-  "openrouter/free",
-  "google/gemma-4-26b-a4b-it:free",
-];
+/** Cap how many stories pay for an LLM rewrite per ingest. */
+const LLM_STORY_CAP = 4;
+/** Skip LLM when local excerpt already makes a decent blurb. */
+const LOCAL_EXCERPT_MIN = 60;
 
 type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
 
@@ -31,81 +27,6 @@ function extractJson(text: string): unknown {
   return JSON.parse(raw.slice(start, end + 1));
 }
 
-async function groqComplete(messages: ChatTurn[], temperature = 0.7): Promise<string> {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("missing groq key");
-
-  let lastError = "groq failed";
-  for (const model of GROQ_MODELS) {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature,
-        max_tokens: 1600,
-        messages,
-      }),
-    });
-    if (!response.ok) {
-      lastError = await response.text();
-      continue;
-    }
-    const data = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = stripThink(data.choices?.[0]?.message?.content ?? "");
-    if (content) return content;
-  }
-  throw new Error(lastError);
-}
-
-async function openRouterComplete(messages: ChatTurn[], temperature = 0.7): Promise<string> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("missing openrouter key");
-
-  let lastError = "openrouter failed";
-  for (const model of OPENROUTER_MODELS) {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "What's Up",
-      },
-      body: JSON.stringify({
-        model,
-        temperature,
-        max_tokens: 1600,
-        messages,
-      }),
-    });
-    if (!response.ok) {
-      lastError = await response.text();
-      continue;
-    }
-    const data = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = stripThink(data.choices?.[0]?.message?.content ?? "");
-    if (content) return content;
-  }
-  throw new Error(lastError);
-}
-
-export async function complete(messages: ChatTurn[], temperature = 0.7): Promise<string> {
-  try {
-    return await groqComplete(messages, temperature);
-  } catch (error) {
-    console.warn("Groq unavailable, trying OpenRouter", error);
-    return await openRouterComplete(messages, temperature);
-  }
-}
-
 function fallbackText(story: FlashStory) {
   const title = plainify(story.title.replace(/\s+/g, " ").trim());
   const excerpt = plainify((story.excerpt || story.snippet || "").replace(/\s+/g, " ").trim());
@@ -115,8 +36,6 @@ function fallbackText(story: FlashStory) {
   if (firstSentence) {
     return ensurePeriod(sentenceCase(trimSummary(firstSentence, 200)));
   }
-
-  // Never glue a raw headline to a canned closer — that reads as one broken sentence.
   return ensurePeriod(plainHeadline(title));
 }
 
@@ -202,9 +121,7 @@ function cleanVoice(text: string) {
     .replace(/^no because\s+/i, "")
     .replace(/\s*is actually insane\.?$/i, "")
     .replace(/\s*not a drill\.?$/i, "")
-    // Orphan dash left when an opener was stripped earlier
     .replace(/^[—–-]\s+/, "")
-    // Legacy fallback glued "Headline Good to know if you follow X"
     .replace(/\s+Good to know if you follow\s+\S+\.?$/i, ".")
     .replace(/\s+Worth a quick look\.?$/i, ".")
     .trim();
@@ -216,115 +133,6 @@ function normalizeGroupText(text: string) {
   out = out.replace(/\s+([.!?])/g, "$1");
   if (!out) return out;
   return sentenceCase(out);
-}
-
-export async function summarizeFlashes(stories: FlashStory[]): Promise<IngestItem[]> {
-  if (stories.length === 0) return [];
-
-  const system = `You write TWO versions of each news story for a group-chat app.
-
-1) groupText — how a sharp 23–24 year old texts a friend about the story (iMessage vibe).
-2) summary — a clean, plain 1–2 sentence blurb for a news card (no slang).
-
-groupText rules:
-- 1–3 short texts max. Under ~220 characters.
-- Casual: contractions, light slang/gen-z phrasing when it fits (lowkey, ngl, tbh, fr, wild, etc.) — don't force it every line.
-- Sound like a real friend, not a news anchor or a brand account.
-- Do NOT paste or lightly rewrite the TITLE. React to the fact, then say what happened.
-- Never invent facts. Use TITLE + EXCERPT only.
-- No "breaking:", no hashtags, no emoji spam (one max if it actually lands).
-
-summary rules:
-- 1–2 short sentences, proper sentence case, simple words.
-- Fact first. Optional "why it matters" second.
-- No slang, no hype words ("insane", "massive", "unprecedented").
-
-keep:false for rankings, schedules, listicles, or fluff with no real news.
-
-Return JSON only:
-{"items":[{"index":0,"keep":true,"groupText":"ngl chelsea cleared house this window — like 39 players gone and they banked over £500m","summary":"Chelsea sold or loaned out 39 players this summer, making over £500 million."}]}`;
-
-  const user = stories
-    .map(
-      (story, index) =>
-        `[${index}] bot=${story.botId} flash=${story.flash} relevance=${story.relevance} popularity=${story.popularity} matched=${story.matchedKeywords.join(", ")} sources=${story.sources.join(" | ")}\nTITLE: ${story.title}\nEXCERPT: ${story.excerpt || story.snippet || "(none)"}`,
-    )
-    .join("\n\n");
-
-  const toItem = (
-    story: FlashStory,
-    friendText: string,
-    summaryText: string,
-    strict = true,
-  ): IngestItem | null => {
-    const friend = normalizeGroupText(friendText);
-    const summary = sentenceCase(trimSummary(summaryText || friendText));
-    const chat = friend.length >= 12 ? friend : summary;
-    if (!chat || chat.length < 12) return null;
-    if (!summary || summary.length < 16) return null;
-    if (strict && tooLikeTitle(chat, story.title) && tooLikeTitle(summary, story.title)) {
-      return null;
-    }
-    return {
-      botId: story.botId,
-      groupText: chat.slice(0, 320),
-      summary: summary.slice(0, 280),
-      dmText: null,
-      sendDm: false,
-      title: story.title,
-      url: story.url,
-      source: story.source,
-      imageUrl: story.imageUrl,
-      matchedKeywords: story.matchedKeywords,
-      sources: story.sources,
-      flash: story.flash,
-    };
-  };
-
-  try {
-    const raw = await complete(
-      [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      0.45,
-    );
-    const parsed = extractJson(raw) as {
-      items?: {
-        index?: number;
-        keep?: boolean;
-        groupText?: string;
-        summary?: string;
-      }[];
-    };
-
-    const kept: IngestItem[] = [];
-    const usedByBot = new Map<BotId, number>();
-    const MAX_PER_BOT = 3;
-    for (const row of parsed.items ?? []) {
-      if (typeof row.index !== "number") continue;
-      const story = stories[row.index];
-      if (!story || row.keep === false) continue;
-      const count = usedByBot.get(story.botId) ?? 0;
-      if (count >= MAX_PER_BOT) continue;
-      const item = toItem(story, row.groupText ?? "", row.summary ?? row.groupText ?? "");
-      if (!item) continue;
-      usedByBot.set(story.botId, count + 1);
-      kept.push(item);
-    }
-    if (kept.length > 0) return kept;
-    console.warn("summarize produced no usable text, using local fallback");
-  } catch (error) {
-    console.warn("curate fallback", error);
-  }
-
-  return stories
-    .map((story) => {
-      const clean = fallbackText(story);
-      const friend = fallbackFriendText(story, clean);
-      return toItem(story, friend, clean, false);
-    })
-    .filter((item): item is IngestItem => Boolean(item));
 }
 
 function fallbackFriendText(story: FlashStory, clean: string) {
@@ -339,6 +147,143 @@ function fallbackFriendText(story: FlashStory, clean: string) {
   return trimSummary(variants[Math.abs(story.title.length) % variants.length], 280);
 }
 
+function toItem(
+  story: FlashStory,
+  friendText: string,
+  summaryText: string,
+  strict = true,
+): IngestItem | null {
+  const friend = normalizeGroupText(friendText);
+  const summary = sentenceCase(trimSummary(summaryText || friendText));
+  const chat = friend.length >= 12 ? friend : summary;
+  if (!chat || chat.length < 12) return null;
+  if (!summary || summary.length < 16) return null;
+  if (strict && tooLikeTitle(chat, story.title) && tooLikeTitle(summary, story.title)) {
+    return null;
+  }
+  return {
+    botId: story.botId,
+    groupText: chat.slice(0, 320),
+    summary: summary.slice(0, 280),
+    dmText: null,
+    sendDm: false,
+    title: story.title,
+    url: story.url,
+    source: story.source,
+    imageUrl: story.imageUrl,
+    matchedKeywords: story.matchedKeywords,
+    sources: story.sources,
+    flash: story.flash,
+  };
+}
+
+function localItem(story: FlashStory): IngestItem | null {
+  const clean = fallbackText(story);
+  return toItem(story, fallbackFriendText(story, clean), clean, false);
+}
+
+function hasStrongLocalCopy(story: FlashStory) {
+  const excerpt = plainify((story.excerpt || story.snippet || "").trim());
+  if (excerpt.length < LOCAL_EXCERPT_MIN) return false;
+  return !tooLikeTitle(excerpt.slice(0, 120), story.title);
+}
+
+/**
+ * Pick a tiny set of stories that benefit most from LLM voice.
+ * Everything else ships on free local copy.
+ */
+function pickForLlm(stories: FlashStory[]): FlashStory[] {
+  const ranked = [...stories].sort((a, b) => {
+    const flashRank = (f: FlashStory["flash"]) => (f === "now" ? 0 : f === "soon" ? 1 : 2);
+    const need = Number(hasStrongLocalCopy(a)) - Number(hasStrongLocalCopy(b)); // prefer weak local
+    if (need) return need;
+    const flash = flashRank(a.flash) - flashRank(b.flash);
+    if (flash) return flash;
+    return b.score - a.score;
+  });
+  return ranked.slice(0, LLM_STORY_CAP);
+}
+
+const INGEST_SYSTEM = `JSON only. For each story return groupText + summary.
+groupText: casual friend iMessage <180 chars. Not the title. No hashtags/emoji spam. Facts from TITLE/EXCERPT only.
+summary: 1 clean sentence, no slang.
+keep:false for fluff/listicles.
+{"items":[{"i":0,"keep":true,"groupText":"ngl chelsea dumped like 39 players and banked over £500m","summary":"Chelsea sold or loaned 39 players this summer for over £500 million."}]}`;
+
+/**
+ * Local-first ingest:
+ * 1) Build free local blurbs for every story
+ * 2) Optionally rewrite at most LLM_STORY_CAP via one small LLM call
+ * 3) On any LLM failure / rate limit → keep local (never block posting)
+ */
+export async function summarizeFlashes(stories: FlashStory[]): Promise<IngestItem[]> {
+  if (stories.length === 0) return [];
+
+  const locals = new Map<string, IngestItem>();
+  const usedByBot = new Map<BotId, number>();
+  const MAX_PER_BOT = 3;
+
+  for (const story of stories) {
+    const count = usedByBot.get(story.botId) ?? 0;
+    if (count >= MAX_PER_BOT) continue;
+    const item = localItem(story);
+    if (!item) continue;
+    locals.set(story.url, item);
+    usedByBot.set(story.botId, count + 1);
+  }
+
+  const candidates = pickForLlm(stories.filter((story) => locals.has(story.url))).filter(
+    (story) => !hasStrongLocalCopy(story),
+  );
+
+  if (candidates.length === 0) {
+    return [...locals.values()];
+  }
+
+  const user = candidates
+    .map((story, index) => {
+      const excerpt = plainify(story.excerpt || story.snippet || "").slice(0, 160);
+      return `[${index}] ${story.title}\n${excerpt || "(no excerpt)"}`;
+    })
+    .join("\n\n");
+
+  const promptTokens = estimateTokens(INGEST_SYSTEM + user);
+  if (promptTokens > 1800) {
+    console.warn("ingest prompt too large, skipping LLM", promptTokens);
+    return [...locals.values()];
+  }
+
+  try {
+    const { text, provider } = await llmComplete(
+      [
+        { role: "system", content: INGEST_SYSTEM },
+        { role: "user", content: user },
+      ],
+      { purpose: "ingest", temperature: 0.4 },
+    );
+    const parsed = extractJson(text) as {
+      items?: { i?: number; index?: number; keep?: boolean; groupText?: string; summary?: string }[];
+    };
+
+    let upgraded = 0;
+    for (const row of parsed.items ?? []) {
+      const idx = typeof row.i === "number" ? row.i : row.index;
+      if (typeof idx !== "number") continue;
+      const story = candidates[idx];
+      if (!story || row.keep === false) continue;
+      const next = toItem(story, row.groupText ?? "", row.summary ?? row.groupText ?? "");
+      if (!next) continue;
+      locals.set(story.url, next);
+      upgraded += 1;
+    }
+    console.info(`ingest LLM (${provider}): upgraded ${upgraded}/${candidates.length}, local ${locals.size}`);
+  } catch (error) {
+    console.warn("ingest LLM skipped, using local copy", error);
+  }
+
+  return [...locals.values()];
+}
+
 export async function botReply(input: {
   botId: BotId;
   history: { role: "user" | "assistant"; content: string }[];
@@ -351,34 +296,47 @@ export async function botReply(input: {
 
   const news =
     input.newsContext.length === 0
-      ? "No recent stories in this thread yet."
+      ? "None yet."
       : input.newsContext
-          .slice(0, 5)
-          .map((story) => `- ${story.title}: ${story.text}`)
+          .slice(0, 3)
+          .map((story) => `- ${story.title.slice(0, 80)}: ${story.text.slice(0, 120)}`)
           .join("\n");
 
-  const live = input.liveContext?.trim();
-  const system = `${bot.vibe}
+  const live = input.liveContext?.trim().slice(0, 600);
+  // Keep vibe short — long persona dumps burn input tokens every reply.
+  const vibe = bot.vibe.length > 280 ? `${bot.vibe.slice(0, 277)}…` : bot.vibe;
+  const system = `${vibe}
 
-You're texting a friend in iMessage. 2-4 short sentences, casual, proper sentence case (capitalize the first letter of each sentence).
-Don't use catchphrases. Don't say "no because" or "actually insane" or "yo this one actually matters".
-${live ? "Answer from LIVE DATA first. Never invent a score or table position." : "Stay on the stories you were given. If you don't know, say so."}`;
+Reply like iMessage: 2-3 short sentences, sentence case. No catchphrases. ${
+    live ? "Trust LIVE DATA for scores." : "Only use the stories given."
+  }`;
+
+  const turns: ChatTurn[] = [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: live
+        ? `LIVE:\n${live}\n\nRecent:\n${news}`
+        : `Recent:\n${news}`,
+    },
+    ...input.history.slice(-4).map((row) => ({
+      role: row.role,
+      content: row.content.slice(0, 400),
+    })),
+    { role: "user", content: input.message.slice(0, 500) },
+  ];
 
   try {
-    const reply = await complete([
-      { role: "system", content: system },
-      {
-        role: "user",
-        content: live
-          ? `LIVE DATA (trust this over memory):\n${live}\n\nRecent posts:\n${news}`
-          : `Recent stories you posted:\n${news}`,
-      },
-      ...input.history.slice(-8),
-      { role: "user", content: input.message },
-    ]);
-    return stripThink(reply).slice(0, 1200);
+    const { text } = await llmComplete(turns, { purpose: "chat", temperature: 0.55 });
+    return stripThink(text).slice(0, 900);
   } catch (error) {
     console.warn("chat fallback", error);
     return "Wifi in my brain just lagged. Ask me again in a sec.";
   }
+}
+
+/** @deprecated use llmComplete — kept so accidental imports don't break */
+export async function complete(messages: ChatTurn[], temperature = 0.7): Promise<string> {
+  const { text } = await llmComplete(messages, { purpose: "chat", temperature });
+  return text;
 }

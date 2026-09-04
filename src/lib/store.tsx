@@ -900,7 +900,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return null;
         }
         const last = profile?.lastIngestAt;
-        if (last && Date.now() - last < 2 * 60 * 1000) return null;
+        if (last && Date.now() - last < 5 * 60 * 1000) return null;
       }
       const enabled = bots ?? profile?.enabledBots ?? [];
       if (enabled.length === 0) return null;
