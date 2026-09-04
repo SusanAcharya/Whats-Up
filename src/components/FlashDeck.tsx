@@ -89,7 +89,7 @@ export function FlashDeck({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[60] flex h-dvh max-h-dvh flex-col overflow-hidden bg-black"
+          className="fixed inset-0 z-[60] bg-black"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -149,7 +149,7 @@ export function FlashDeck({
           </header>
 
           {cards.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+            <div className="relative z-10 flex h-full flex-col items-center justify-center px-8 text-center">
               {filterBotMeta ? <BotMark id={filterBotMeta.id} size="lg" /> : null}
               <p className="mt-4 text-[18px] font-semibold text-[var(--ink)]">
                 {filterBotMeta
@@ -221,7 +221,7 @@ function FlashCard({
   const [shareHint, setShareHint] = useState<string | null>(null);
   const bot = isBotId(message.sender) ? getBot(message.sender) : undefined;
   const title = message.articleTitle?.trim();
-  const body = message.text.trim();
+  const body = (message.summary || message.text).trim();
   const { imageUrl, onError } = useStoryImage(message, active);
   const showImage = Boolean(imageUrl);
   const source =

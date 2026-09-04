@@ -198,31 +198,28 @@ function cleanVoice(text: string) {
 export async function summarizeFlashes(stories: FlashStory[]): Promise<IngestItem[]> {
   if (stories.length === 0) return [];
 
-  const system = `You explain news the way you'd text a friend — short and simple.
+  const system = `You write TWO versions of each news story for a group-chat app.
 
-Each story already passed a filter. Your job: make the gist obvious in plain English.
+1) groupText — how a sharp 23–24 year old texts a friend about the story (iMessage vibe).
+2) summary — a clean, plain 1–2 sentence blurb for a news card (no slang).
 
-Rules:
-- 1-2 short sentences. Aim for under 200 characters total.
-- Use simple words. No jargon. If a term is needed, explain it in plain language.
-- Sentence 1: what happened (one main fact). Sentence 2 (optional): why it matters in everyday terms.
-- Proper sentence case. Sound human, not like a newspaper or lawyer.
-- Do not copy or lightly rewrite the TITLE.
+groupText rules:
+- 1–3 short texts max. Under ~220 characters.
+- Casual: contractions, light slang/gen-z phrasing when it fits (lowkey, ngl, tbh, fr, wild, etc.) — don't force it every line.
+- Sound like a real friend, not a news anchor or a brand account.
+- Do NOT paste or lightly rewrite the TITLE. React to the fact, then say what happened.
 - Never invent facts. Use TITLE + EXCERPT only.
-- No "breaking:", no emoji, no hype ("insane", "massive", "unprecedented").
-- keep:false for rankings, schedules, listicles, or fluff with no real news.
+- No "breaking:", no hashtags, no emoji spam (one max if it actually lands).
 
-Good:
-- Apple says OpenAI destroyed evidence in their court case. Could affect how AI companies handle legal requests.
-- The Fed kept interest rates the same. Borrowing costs stay put for now.
+summary rules:
+- 1–2 short sentences, proper sentence case, simple words.
+- Fact first. Optional "why it matters" second.
+- No slang, no hype words ("insane", "massive", "unprecedented").
 
-Bad:
-- Long sentences with multiple clauses and insider terms
-- Restating the headline
-- Explaining every detail — pick the one thing that matters
+keep:false for rankings, schedules, listicles, or fluff with no real news.
 
 Return JSON only:
-{"items":[{"index":0,"keep":true,"groupText":"Apple says OpenAI destroyed evidence in their court case. Could affect how AI companies handle legal requests."}]}`;
+{"items":[{"index":0,"keep":true,"groupText":"ngl chelsea cleared house this window — like 39 players gone and they banked over £500m","summary":"Chelsea sold or loaned out 39 players this summer, making over £500 million."}]}`;
 
   const user = stories
     .map(
@@ -231,13 +228,24 @@ Return JSON only:
     )
     .join("\n\n");
 
-  const toItem = (story: FlashStory, text: string, strict = true): IngestItem | null => {
-    const summary = sentenceCase(trimSummary(text));
-    if (!summary || summary.length < 20) return null;
-    if (strict && tooLikeTitle(summary, story.title)) return null;
+  const toItem = (
+    story: FlashStory,
+    friendText: string,
+    summaryText: string,
+    strict = true,
+  ): IngestItem | null => {
+    const friend = cleanVoice(friendText).trim();
+    const summary = sentenceCase(trimSummary(summaryText || friendText));
+    const chat = friend.length >= 12 ? friend : summary;
+    if (!chat || chat.length < 12) return null;
+    if (!summary || summary.length < 16) return null;
+    if (strict && tooLikeTitle(chat, story.title) && tooLikeTitle(summary, story.title)) {
+      return null;
+    }
     return {
       botId: story.botId,
-      groupText: summary.slice(0, 280),
+      groupText: chat.slice(0, 320),
+      summary: summary.slice(0, 280),
       dmText: null,
       sendDm: false,
       title: story.title,
@@ -256,13 +264,14 @@ Return JSON only:
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      0.25,
+      0.45,
     );
     const parsed = extractJson(raw) as {
       items?: {
         index?: number;
         keep?: boolean;
         groupText?: string;
+        summary?: string;
       }[];
     };
 
@@ -275,7 +284,7 @@ Return JSON only:
       if (!story || row.keep === false) continue;
       const count = usedByBot.get(story.botId) ?? 0;
       if (count >= MAX_PER_BOT) continue;
-      const item = toItem(story, row.groupText ?? "");
+      const item = toItem(story, row.groupText ?? "", row.summary ?? row.groupText ?? "");
       if (!item) continue;
       usedByBot.set(story.botId, count + 1);
       kept.push(item);
@@ -286,10 +295,24 @@ Return JSON only:
     console.warn("curate fallback", error);
   }
 
-  // Avoid N extra LLM round-trips on phone/serverless — local copy is fine.
   return stories
-    .map((story) => toItem(story, fallbackText(story), false))
+    .map((story) => {
+      const clean = fallbackText(story);
+      const friend = fallbackFriendText(story, clean);
+      return toItem(story, friend, clean, false);
+    })
     .filter((item): item is IngestItem => Boolean(item));
+}
+
+function fallbackFriendText(story: FlashStory, clean: string) {
+  const bit = clean.replace(/\.$/, "");
+  const openers = [
+    `okay wait — ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
+    `lowkey big: ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
+    `ngl this one's kinda wild — ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
+  ];
+  const pick = openers[Math.abs(story.title.length) % openers.length];
+  return trimSummary(pick, 280);
 }
 
 export async function botReply(input: {

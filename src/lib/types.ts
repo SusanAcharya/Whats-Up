@@ -58,6 +58,8 @@ export type ChatMessage = {
   kind: MessageKind;
   articleUrl?: string;
   articleTitle?: string;
+  /** Clean 1–2 sentence blurb for Flash; chat bubble uses `text` (friend voice). */
+  summary?: string;
   imageUrl?: string;
   matchedKeywords?: string[];
   sources?: string[];
@@ -84,7 +86,10 @@ export type NotificationPrefs = {
 
 export type IngestItem = {
   botId: BotId;
+  /** Casual friend-text for the chat bubble. */
   groupText: string;
+  /** Clean summary for Flash cards. */
+  summary: string;
   dmText: string | null;
   sendDm: boolean;
   title: string;

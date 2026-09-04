@@ -384,10 +384,8 @@ a:focus-visible,
 /* ── Flash deck (doomscroll cards) ── */
 
 .flash-deck {
-  flex: 1 1 0;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
+  position: absolute;
+  inset: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -399,8 +397,9 @@ a:focus-visible,
 
 .flash-slide {
   height: 100%;
+  height: 100dvh;
   min-height: 100%;
-  max-height: 100%;
+  min-height: 100dvh;
   flex-shrink: 0;
   scroll-snap-align: start;
   scroll-snap-stop: always;

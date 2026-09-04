@@ -238,6 +238,7 @@ function messageFromDoc(chatId: string, id: string, data: Record<string, unknown
     kind: (data.kind ?? "chat") as MessageKind,
     articleUrl: typeof data.articleUrl === "string" ? data.articleUrl : undefined,
     articleTitle: typeof data.articleTitle === "string" ? data.articleTitle : undefined,
+    summary: typeof data.summary === "string" ? data.summary : undefined,
     imageUrl: typeof data.imageUrl === "string" ? data.imageUrl : undefined,
     matchedKeywords: stringList(data.matchedKeywords),
     sources: stringList(data.sources),
@@ -430,7 +431,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (backend !== "firebase" || !uid || !db) return;
     const firestore = requireDb();
     const userId = uid;
-    const MESSAGE_LIMIT = 80;
+    const MESSAGE_LIMIT = 200;
     const listen = (chatId: string) =>
       onSnapshot(
         query(
@@ -524,6 +525,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       kind: MessageKind;
       articleUrl?: string;
       articleTitle?: string;
+      summary?: string;
       imageUrl?: string;
       matchedKeywords?: string[];
       sources?: string[];
@@ -536,6 +538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         kind: input.kind,
         ...(input.articleUrl ? { articleUrl: input.articleUrl.slice(0, 2000) } : {}),
         ...(input.articleTitle ? { articleTitle: input.articleTitle.slice(0, 300) } : {}),
+        ...(input.summary ? { summary: input.summary.slice(0, 400) } : {}),
         ...(input.imageUrl ? { imageUrl: input.imageUrl.slice(0, 2000) } : {}),
         ...(input.matchedKeywords?.length
           ? { matchedKeywords: input.matchedKeywords.slice(0, 12) }
@@ -678,6 +681,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           kind: "news",
           articleUrl: row.articleUrl,
           articleTitle: row.articleTitle,
+          summary: row.summary,
           imageUrl: row.imageUrl,
           matchedKeywords: row.matchedKeywords,
           sources: row.sources,
@@ -894,6 +898,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               kind: "news" as const,
               articleUrl: item.url,
               articleTitle: item.title,
+              summary: item.summary,
               imageUrl: item.imageUrl,
               matchedKeywords: item.matchedKeywords,
               sources: item.sources,
@@ -926,6 +931,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               kind: "news" as const,
               articleUrl: item.url.slice(0, 2000),
               articleTitle: item.title.slice(0, 300),
+              summary: (item.summary || item.groupText).slice(0, 400),
               ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 2000) } : {}),
               ...(item.matchedKeywords?.length
                 ? { matchedKeywords: item.matchedKeywords.slice(0, 12) }
@@ -1282,19 +1288,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const messages = (selectedChatId ? (messageMap[selectedChatId] ?? []) : []).filter(
         (row) => stillMatches(row, profile?.preferences),
       );
-      const groupNews = (messageMap[GROUP_CHAT_ID] ?? []).filter(
-        (row) => row.kind === "news" && stillMatches(row, profile?.preferences),
-      );
-      const dmNews = (profile?.enabledBots ?? []).flatMap((botId) =>
-        (messageMap[dmChatId(botId)] ?? []).filter(
-          (row) => row.kind === "news" && stillMatches(row, profile?.preferences),
-        ),
-      );
+      // Flash = every fresh news row already loaded in any chat (full doomscroll deck).
+      const enabled = new Set(profile?.enabledBots ?? []);
       const flashByKey = new Map<string, ChatMessage>();
-      for (const row of [...groupNews, ...dmNews]) {
-        const key = row.articleUrl || row.id;
-        const existing = flashByKey.get(key);
-        if (!existing || row.createdAt > existing.createdAt) flashByKey.set(key, row);
+      for (const rows of Object.values(messageMap)) {
+        for (const row of rows) {
+          if (row.kind !== "news") continue;
+          if (!isFreshNews(row.createdAt)) continue;
+          if (!isBotId(row.sender)) continue;
+          if (enabled.size > 0 && !enabled.has(row.sender)) continue;
+          const key = (row.articleUrl || `${row.sender}:${row.articleTitle}` || row.id).toLowerCase();
+          const existing = flashByKey.get(key);
+          if (!existing || row.createdAt > existing.createdAt) flashByKey.set(key, row);
+        }
       }
       const flashNews = [...flashByKey.values()].sort((a, b) => b.createdAt - a.createdAt);
       return {

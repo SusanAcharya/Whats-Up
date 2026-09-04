@@ -92,10 +92,12 @@ async function addNewsMessage(
     kind: "news",
     articleUrl: item.url.slice(0, 2000),
     articleTitle: item.title.slice(0, 300),
+    summary: (item.summary || item.groupText).slice(0, 400),
     matchedKeywords: item.matchedKeywords.slice(0, 12),
     sources: item.sources.slice(0, 8),
     flash: item.flash,
     createdAt: FieldValue.serverTimestamp(),
+    ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 2000) } : {}),
   };
   await messagesRef.add(payload);
   const chatSnap = await chatRef.get();
