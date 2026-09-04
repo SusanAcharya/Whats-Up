@@ -10,6 +10,7 @@ import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
+import { useHiResStoryImage } from "@/lib/use-hires-image";
 import { IconBack, IconCards, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
@@ -599,7 +600,7 @@ function NewsCard({
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const [shareHint, setShareHint] = useState<string | null>(null);
-  const [imgFailed, setImgFailed] = useState(false);
+  const { imageUrl, onError } = useHiResStoryImage(message.articleUrl, message.imageUrl);
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
   const showTitle = Boolean(title && !sameCopy(title, body));
@@ -611,7 +612,7 @@ function NewsCard({
     message.flash === "now" ? "Breaking" : message.flash === "soon" ? "Upcoming" : null;
   const keywords = message.matchedKeywords ?? [];
   const botId = author?.id;
-  const showImage = Boolean(message.imageUrl && !imgFailed);
+  const showImage = Boolean(imageUrl);
 
   async function onShare() {
     const result = await shareStory(message);
@@ -653,13 +654,13 @@ function NewsCard({
               <div className="relative aspect-[16/9] w-full overflow-hidden bg-[var(--panel)]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={message.imageUrl}
+                  src={imageUrl}
                   alt=""
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
-                  onError={() => setImgFailed(true)}
+                  onError={onError}
                 />
                 <div
                   className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--elevated)] to-transparent"

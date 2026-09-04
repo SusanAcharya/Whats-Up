@@ -9,6 +9,7 @@ import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { springSoft } from "./motion";
 import { IconBack, IconChat, IconHash, IconLink, IconRefresh, IconShare } from "./icons";
+import { useHiResStoryImage } from "@/lib/use-hires-image";
 
 async function shareStory(message: ChatMessage) {
   const title = message.articleTitle?.trim() || "Story from What's Up";
@@ -40,38 +41,7 @@ function clock(ts: number) {
 }
 
 function useStoryImage(message: ChatMessage, active: boolean) {
-  const [fetchedUrl, setFetchedUrl] = useState<string | undefined>(undefined);
-  const [failed, setFailed] = useState(false);
-  const tried = useRef(false);
-  const imageUrl = message.imageUrl || fetchedUrl;
-
-  useEffect(() => {
-    if (!active || message.imageUrl || fetchedUrl || failed || tried.current || !message.articleUrl) {
-      return;
-    }
-    tried.current = true;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch(`/api/meta?url=${encodeURIComponent(message.articleUrl!)}`);
-        if (!response.ok) {
-          if (!cancelled) setFailed(true);
-          return;
-        }
-        const data = (await response.json()) as { imageUrl?: string | null };
-        if (cancelled) return;
-        if (data.imageUrl) setFetchedUrl(data.imageUrl);
-        else setFailed(true);
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [active, failed, fetchedUrl, message.articleUrl, message.imageUrl]);
-
-  return { imageUrl, onError: () => setFailed(true), failed };
+  return useHiResStoryImage(message.articleUrl, message.imageUrl, active);
 }
 
 export function FlashDeck({
@@ -252,8 +222,8 @@ function FlashCard({
   const bot = isBotId(message.sender) ? getBot(message.sender) : undefined;
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
-  const { imageUrl, onError, failed } = useStoryImage(message, active);
-  const showImage = Boolean(imageUrl && !failed);
+  const { imageUrl, onError } = useStoryImage(message, active);
+  const showImage = Boolean(imageUrl);
   const source =
     message.sources && message.sources.length > 1
       ? `${message.sources[0]} +${message.sources.length - 1}`
