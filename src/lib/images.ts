@@ -14,6 +14,31 @@ function looksLikeImage(url: string) {
   }
 }
 
+function looksLikeArticleUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host.includes("news.google.")) return true;
+    if (
+      host.includes("google.") ||
+      host.includes("gstatic.com") ||
+      host.includes("googleusercontent.com") ||
+      host.includes("ggpht.com") ||
+      host.includes("google-analytics.com") ||
+      host.includes("googletagmanager.com")
+    ) {
+      return false;
+    }
+    if (/\.(jpe?g|png|gif|webp|svg|ico|js|css|map)(\?|$)/i.test(parsed.pathname)) return false;
+    if (/=w\d{1,3}($|\?)/i.test(parsed.href)) return false;
+    if (parsed.pathname === "/" || parsed.pathname === "") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Guess pixel width from URL path/query (RSS thumbs are often 120–320). */
 export function estimateImageWidth(url: string): number {
   try {
@@ -139,6 +164,41 @@ export function imageFromRssItem(item: {
   return pickBestImage(candidates);
 }
 
+function isJunkArticleUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const path = parsed.pathname.toLowerCase();
+
+    // Real Google News story links are allowed and unique per item.
+    if (host.includes("news.google.")) return false;
+
+    if (
+      host.includes("google.") ||
+      host.endsWith("google.com") ||
+      host.includes("gstatic.com") ||
+      host.includes("googleusercontent.com") ||
+      host.includes("ggpht.com") ||
+      host.includes("google-analytics.com") ||
+      host.includes("googletagmanager.com") ||
+      host.includes("doubleclick.net") ||
+      host.includes("googlesyndication.com") ||
+      host.includes("schema.org")
+    ) {
+      return true;
+    }
+
+    if (/\.(jpe?g|png|gif|webp|svg|ico|js|css|map|woff2?|ttf|json)(\?|$)/i.test(path)) {
+      return true;
+    }
+    if (path === "/" || path === "" || path === "/analytics.js") return true;
+    if (/=w\d{1,3}($|\?)/i.test(parsed.href) || /=s0-w\d+/i.test(parsed.href)) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 /** Prefer a publisher URL when Google News wraps the story. */
 export function publisherUrlFromRss(item: {
   link?: string;
@@ -149,13 +209,15 @@ export function publisherUrlFromRss(item: {
   const html = `${item.content ?? ""} ${item["content:encoded"] ?? ""} ${item.contentSnippet ?? ""}`;
   const anchors = [...html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]);
   for (const href of anchors) {
+    if (isJunkArticleUrl(href)) continue;
+    // Prefer links that look like articles (path beyond the domain root).
     try {
-      const host = new URL(href).hostname.replace(/^www\./, "");
-      if (host.includes("google.com") || host.includes("gstatic.com")) continue;
-      return href;
+      const path = new URL(href).pathname;
+      if (path.split("/").filter(Boolean).length < 1) continue;
     } catch {
-      /* ignore */
+      continue;
     }
+    return href;
   }
   return undefined;
 }
@@ -190,6 +252,8 @@ async function resolveArticleUrl(url: string): Promise<string> {
       try {
         const host = new URL(href).hostname.replace(/^www\./, "");
         if (host.includes("google.com") || host.includes("gstatic.com")) continue;
+        if (host.includes("googleusercontent.com") || host.includes("ggpht.com")) continue;
+        if (/\.(jpe?g|png|gif|webp|svg|ico)(\?|$)/i.test(new URL(href).pathname)) continue;
         return href;
       } catch {
         /* ignore */
@@ -274,11 +338,18 @@ export async function enrichStories<
       }
       const meta = await fetchArticleMeta(story.url);
       const best = pickBestImage([meta.imageUrl, rssImage]);
+      const resolved =
+        meta.resolvedUrl &&
+        isGoogleNewsUrl(story.url) &&
+        looksLikeArticleUrl(meta.resolvedUrl) &&
+        !isGoogleNewsUrl(meta.resolvedUrl)
+          ? meta.resolvedUrl
+          : undefined;
       return {
         ...story,
         imageUrl: best || rssImage || story.imageUrl,
         excerpt: story.excerpt || meta.excerpt,
-        ...(meta.resolvedUrl && isGoogleNewsUrl(story.url) ? { url: meta.resolvedUrl } : {}),
+        ...(resolved ? { url: resolved } : {}),
       };
     }),
   );

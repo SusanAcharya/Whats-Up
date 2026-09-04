@@ -211,6 +211,21 @@ function stillMatches(message: ChatMessage, preferences?: UserProfile["preferenc
   return matchKeywords(text, rules).length > 0;
 }
 
+/** Prefer title+bot so broken shared CDN URLs don't collapse the Flash deck. */
+function newsDedupeKey(row: {
+  sender: string;
+  articleUrl?: string;
+  articleTitle?: string;
+  text?: string;
+  id?: string;
+}) {
+  const title = (row.articleTitle || row.text || "").trim().toLowerCase().slice(0, 120);
+  if (title) return `${row.sender}:${title}`;
+  const url = (row.articleUrl || "").toLowerCase();
+  if (url && !url.includes("googleusercontent.com") && !/=w\d{1,3}/i.test(url)) return url;
+  return (row.id || `${row.sender}:${url}`).toLowerCase();
+}
+
 function millis(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object") {
@@ -886,11 +901,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             preferences,
           }),
         });
-        if (!response.ok) throw new Error("ingest failed");
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          throw new Error(`ingest failed (${response.status}) ${detail.slice(0, 160)}`);
+        }
         const data = (await response.json()) as {
           items?: IngestItem[];
           stats?: IngestStats;
+          error?: string;
         };
+        if (data.error) throw new Error(data.error);
         const apiStats = data.stats ?? emptyStats;
         const posted: IngestItem[] = [];
         const skipped: IngestItem[] = [];
@@ -944,6 +964,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const firestore = db;
           const userId = uid;
           const batch = writeBatch(firestore);
+          const chatTouches = new Map<
+            string,
+            { lastMessage: string; bump: number; clearUnread: boolean }
+          >();
+
+          const touchChat = (chatId: string, lastMessage: string, bump: boolean) => {
+            const clearUnread = selectedRef.current === chatId;
+            const prev = chatTouches.get(chatId);
+            chatTouches.set(chatId, {
+              lastMessage,
+              bump: clearUnread ? 0 : (prev?.bump ?? 0) + (bump ? 1 : 0),
+              clearUnread,
+            });
+          };
+
           for (const item of posted) {
             const payload = {
               sender: item.botId,
@@ -965,22 +1000,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             batch.set(doc(collection(firestore, "users", userId, "chats", groupId, "messages")), payload);
             batch.set(doc(collection(firestore, "users", userId, "chats", dmId, "messages")), payload);
 
-            const bumpGroup = reason !== "open" || selectedRef.current !== groupId;
-            const bumpDm = selectedRef.current !== dmId;
-            const groupUpdate: Record<string, unknown> = {
-              lastMessage: preview(item.groupText),
-              lastMessageAt: serverTimestamp(),
-            };
-            if (selectedRef.current === groupId) groupUpdate.unread = 0;
-            else if (bumpGroup) groupUpdate.unread = increment(1);
-            const dmUpdate: Record<string, unknown> = {
-              lastMessage: preview(item.groupText),
-              lastMessageAt: serverTimestamp(),
-            };
-            if (selectedRef.current === dmId) dmUpdate.unread = 0;
-            else if (bumpDm) dmUpdate.unread = increment(1);
-            batch.update(doc(firestore, "users", userId, "chats", groupId), groupUpdate);
-            batch.update(doc(firestore, "users", userId, "chats", dmId), dmUpdate);
+            touchChat(
+              groupId,
+              preview(item.groupText),
+              reason !== "open" || selectedRef.current !== groupId,
+            );
+            touchChat(dmId, preview(item.groupText), selectedRef.current !== dmId);
 
             batch.set(doc(firestore, "users", userId, "seen", seenId(item.url)), {
               url: item.url,
@@ -990,6 +1015,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
             lastNewsRef.current[item.botId] = { title: item.title, text: item.groupText };
           }
+
+          // One write per chat doc — Firestore rejects multiple updates to the same doc in a batch.
+          for (const [chatId, touch] of chatTouches) {
+            const update: Record<string, unknown> = {
+              lastMessage: touch.lastMessage,
+              lastMessageAt: serverTimestamp(),
+            };
+            if (touch.clearUnread) update.unread = 0;
+            else if (touch.bump > 0) update.unread = increment(touch.bump);
+            batch.set(doc(firestore, "users", userId, "chats", chatId), update, { merge: true });
+          }
+
           for (const item of skipped) {
             batch.set(doc(firestore, "users", userId, "seen", seenId(item.url)), {
               url: item.url,
@@ -1022,20 +1059,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const dmId = dmChatId(item.botId);
               const groupMsg: ChatMessage = {
                 ...base,
-                id: `optimistic-group-${item.url}`,
+                id: `optimistic-group-${newsDedupeKey({ sender: item.botId, articleTitle: item.title, articleUrl: item.url })}`,
                 chatId: groupId,
               };
               const dmMsg: ChatMessage = {
                 ...base,
-                id: `optimistic-dm-${item.url}`,
+                id: `optimistic-dm-${newsDedupeKey({ sender: item.botId, articleTitle: item.title, articleUrl: item.url })}`,
                 chatId: dmId,
               };
               const merge = (chatId: string, msg: ChatMessage) => {
                 const rows = next[chatId] ?? [];
-                const key = (msg.articleUrl || msg.id).toLowerCase();
-                if (rows.some((row) => (row.articleUrl || row.id).toLowerCase() === key)) {
-                  return;
-                }
+                const key = newsDedupeKey(msg);
+                if (rows.some((row) => newsDedupeKey(row) === key)) return;
                 next[chatId] = [...rows, msg];
               };
               merge(groupId, groupMsg);
@@ -1080,7 +1115,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result;
       } catch (err) {
         console.error(err);
-        setError("Couldn't grab the news. Check your wifi and try again.");
+        const detail = err instanceof Error && err.message ? err.message : "";
+        setError(
+          detail && !/failed to fetch|networkerror/i.test(detail)
+            ? `Couldn't grab the news. ${detail.slice(0, 120)}`
+            : "Couldn't grab the news. Check your wifi and try again.",
+        );
         return null;
       } finally {
         ingestingRef.current = false;
@@ -1358,7 +1398,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for (const row of rows) {
           if (row.kind !== "news") continue;
           if (!isBotId(row.sender)) continue;
-          const key = (row.articleUrl || `${row.sender}:${row.articleTitle || row.text}` || row.id).toLowerCase();
+          const key = newsDedupeKey(row);
           const existing = flashByKey.get(key);
           if (!existing || row.createdAt > existing.createdAt) flashByKey.set(key, row);
         }

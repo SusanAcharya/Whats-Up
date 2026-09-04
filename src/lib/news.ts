@@ -91,10 +91,12 @@ export async function fetchFeed(url: string, botId: BotId): Promise<RawStory[]> 
           contentSnippet: item.contentSnippet,
           "content:encoded": (item as { contentEncoded?: string }).contentEncoded,
         });
+        // Prefer the RSS item link (unique). Only swap in a clean publisher URL.
+        const storyUrl = publisher ?? link;
         const story: RawStory = {
           botId,
           title: parsed.title,
-          url: publisher || link,
+          url: storyUrl,
           source: parsed.source || sourceName,
           snippet,
           publishedAt: item.isoDate ? Date.parse(item.isoDate) : Date.now(),

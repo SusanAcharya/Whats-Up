@@ -45,7 +45,9 @@ function useStoryImage(message: ChatMessage, active: boolean) {
 }
 
 function newsKey(row: ChatMessage) {
-  return (row.articleUrl || `${row.sender}:${row.articleTitle || row.text}` || row.id).toLowerCase();
+  const title = (row.articleTitle || row.text || "").trim().toLowerCase().slice(0, 120);
+  if (title && isBotId(row.sender)) return `${row.sender}:${title}`;
+  return (row.articleUrl || row.id).toLowerCase();
 }
 
 /**
