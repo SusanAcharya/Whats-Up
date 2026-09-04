@@ -113,31 +113,42 @@ function fallbackText(story: FlashStory) {
     excerpt.split(/(?<=[.!?])\s+/).find((row) => row.length > 25 && !tooLikeTitle(row, title)) ?? "";
 
   if (firstSentence) {
-    return sentenceCase(trimSummary(firstSentence, 200));
+    return ensurePeriod(sentenceCase(trimSummary(firstSentence, 200)));
   }
 
-  const gist = plainHeadline(title);
-  const tag = story.matchedKeywords[0];
-  if (tag) {
-    return `${gist} Good to know if you follow ${tag}.`;
-  }
-  return `${gist} Worth a quick look.`;
+  // Never glue a raw headline to a canned closer — that reads as one broken sentence.
+  return ensurePeriod(plainHeadline(title));
+}
+
+function ensurePeriod(text: string) {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (!trimmed) return trimmed;
+  if (/[.!?…]$/.test(trimmed)) return trimmed;
+  return `${trimmed}.`;
 }
 
 function plainHeadline(title: string) {
-  const words = title.trim().split(/\s+/);
+  const cleaned = title
+    .replace(/\s*[|–—]\s*/g, " — ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned.split(/\s+/);
   const soft = new Set([
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "is", "are", "was", "were",
     "has", "have", "says", "said", "will", "be", "by", "as", "it", "its", "with", "from", "that", "this",
   ]);
   const out = words.map((word, index) => {
-    if (index === 0) return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    if (soft.has(word.toLowerCase())) return word.toLowerCase();
+    if (word === "—" || word === "-" || word === "|") return word;
+    const lower = word.toLowerCase();
+    if (index === 0 || (index > 0 && words[index - 1] === "—")) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
+    if (soft.has(lower)) return lower;
     if (word === word.toUpperCase() && word.length <= 5) return word;
     if (/^[A-Z][a-z]+/.test(word) && word.length > 2) return word;
-    return word.toLowerCase();
+    return lower;
   });
-  return sentenceCase(trimSummary(out.join(" ").replace(/[?!.]+$/, ""), 150));
+  return sentenceCase(trimSummary(out.join(" ").replace(/\s+[?!.]+$/, ""), 150));
 }
 
 function plainify(text: string) {
@@ -189,10 +200,22 @@ function cleanVoice(text: string) {
     .replace(/^[🌍⚽💻🎬📈🧪]\s*/u, "")
     .replace(/^yo this one actually matters:\s*/i, "")
     .replace(/^no because\s+/i, "")
-    .replace(/^okay wait\.?\s*/i, "")
     .replace(/\s*is actually insane\.?$/i, "")
     .replace(/\s*not a drill\.?$/i, "")
+    // Orphan dash left when an opener was stripped earlier
+    .replace(/^[—–-]\s+/, "")
+    // Legacy fallback glued "Headline Good to know if you follow X"
+    .replace(/\s+Good to know if you follow\s+\S+\.?$/i, ".")
+    .replace(/\s+Worth a quick look\.?$/i, ".")
     .trim();
+}
+
+function normalizeGroupText(text: string) {
+  let out = cleanVoice(text).replace(/\s+/g, " ").trim();
+  out = out.replace(/^[—–-]\s+/, "");
+  out = out.replace(/\s+([.!?])/g, "$1");
+  if (!out) return out;
+  return sentenceCase(out);
 }
 
 export async function summarizeFlashes(stories: FlashStory[]): Promise<IngestItem[]> {
@@ -234,7 +257,7 @@ Return JSON only:
     summaryText: string,
     strict = true,
   ): IngestItem | null => {
-    const friend = cleanVoice(friendText).trim();
+    const friend = normalizeGroupText(friendText);
     const summary = sentenceCase(trimSummary(summaryText || friendText));
     const chat = friend.length >= 12 ? friend : summary;
     if (!chat || chat.length < 12) return null;
@@ -305,14 +328,15 @@ Return JSON only:
 }
 
 function fallbackFriendText(story: FlashStory, clean: string) {
-  const bit = clean.replace(/\.$/, "");
-  const openers = [
-    `okay wait — ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
-    `lowkey big: ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
-    `ngl this one's kinda wild — ${bit.charAt(0).toLowerCase()}${bit.slice(1)}`,
+  const fact = ensurePeriod(clean).replace(/\.$/, "");
+  const lower = `${fact.charAt(0).toLowerCase()}${fact.slice(1)}`;
+  const variants = [
+    ensurePeriod(sentenceCase(fact)),
+    `wait — ${lower}.`,
+    `lowkey ${lower}.`,
+    `ngl ${lower}.`,
   ];
-  const pick = openers[Math.abs(story.title.length) % openers.length];
-  return trimSummary(pick, 280);
+  return trimSummary(variants[Math.abs(story.title.length) % variants.length], 280);
 }
 
 export async function botReply(input: {

@@ -600,12 +600,11 @@ function NewsCard({
   onAskBot: (botId: BotId, message: ChatMessage) => void;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
-  const [headlineOpen, setHeadlineOpen] = useState(false);
   const [shareHint, setShareHint] = useState<string | null>(null);
   const { imageUrl, onError } = useHiResStoryImage(message.articleUrl, message.imageUrl);
   const title = message.articleTitle?.trim();
   const body = message.text.trim();
-  const canExpandHeadline = Boolean(title && !sameCopy(title, body));
+  const showTitle = Boolean(title && !sameCopy(title, body));
   const sourceLabel =
     message.sources && message.sources.length > 1
       ? `${message.sources[0]} +${message.sources.length - 1}`
@@ -672,23 +671,14 @@ function NewsCard({
               </div>
             ) : null}
             <div className={`bubble-news px-3.5 ${showImage ? "pb-3 pt-2.5" : "py-3"}`}>
+              {title && showTitle ? (
+                <p className="mb-1.5 line-clamp-2 text-[13px] font-medium leading-snug text-[var(--ink-muted)]">
+                  {title}
+                </p>
+              ) : null}
               <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--ink)]">
                 {body}
               </p>
-              {canExpandHeadline && title ? (
-                <div className="mt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setHeadlineOpen((open) => !open)}
-                    className="text-[12px] font-medium text-[var(--ink-faint)] underline-offset-2 hover:text-[var(--ink-muted)] hover:underline"
-                  >
-                    {headlineOpen ? "Hide headline" : "Headline"}
-                  </button>
-                  <ExpandHeight open={headlineOpen}>
-                    <p className="bubble-news-title mt-1.5 text-[var(--ink-muted)]">{title}</p>
-                  </ExpandHeight>
-                </div>
-              ) : null}
             </div>
             {readHref ? (
               <a
