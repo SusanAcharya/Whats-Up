@@ -15,11 +15,11 @@ const SKIP =
 export function classifyFlash(text: string, publishedAt: number, now = Date.now()): FlashKind | null {
   const ageHours = (now - publishedAt) / 3_600_000;
   if (SKIP.test(text)) return null;
-  if (ageHours > 24 && !SOON.test(text)) return null;
-  if (ageHours > 36) return null;
-  if (PAST.test(text) && !NOW.test(text) && !SOON.test(text) && ageHours > 4) return null;
+  if (ageHours > 36 && !SOON.test(text)) return null;
+  if (ageHours > 48) return null;
+  if (PAST.test(text) && !NOW.test(text) && !SOON.test(text) && ageHours > 8) return null;
   if (NOW.test(text) || ageHours <= 3) return "now";
-  if (SOON.test(text) || ageHours <= 8) return "soon";
+  if (SOON.test(text) || ageHours <= 12) return "soon";
   return "recent";
 }
 

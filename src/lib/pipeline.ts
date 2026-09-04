@@ -155,13 +155,22 @@ export async function collectFlashes(
     if (pass) stats.gatePassed += 1;
     return pass;
   });
-  const bestByBot = new Map<BotId, FlashStory>();
-  for (const story of gated) {
-    const current = bestByBot.get(story.botId);
-    if (!current || story.score > current.score) bestByBot.set(story.botId, story);
-  }
 
-  const winners = [...bestByBot.values()].sort((a, b) => b.score - a.score);
+  /** Flash needs volume — keep a few strong hits per bot, not just one. */
+  const PER_BOT = 3;
+  const rankedByBot = new Map<BotId, FlashStory[]>();
+  for (const story of gated) {
+    const list = rankedByBot.get(story.botId) ?? [];
+    list.push(story);
+    rankedByBot.set(story.botId, list);
+  }
+  const winners: FlashStory[] = [];
+  for (const list of rankedByBot.values()) {
+    list.sort((a, b) => b.score - a.score);
+    winners.push(...list.slice(0, PER_BOT));
+  }
+  winners.sort((a, b) => b.score - a.score);
+
   const enriched = await enrichStories(winners);
   stats.posted = enriched.length;
   return { stories: enriched, stats };
