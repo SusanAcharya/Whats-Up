@@ -67,9 +67,11 @@ function clusterStories(stories: FlashStory[]): FlashStory[] {
     const current = clusters[twin];
     const sources = [...new Set([...current.sources, story.source])];
     const better =
-      story.score > current.score ||
-      (story.score === current.score && story.publishedAt > current.publishedAt) ||
-      (!current.imageUrl && Boolean(story.imageUrl));
+      (Boolean(story.imageUrl) && !current.imageUrl) ||
+      (story.score > current.score && !(current.imageUrl && !story.imageUrl)) ||
+      (story.score === current.score &&
+        story.publishedAt > current.publishedAt &&
+        !(current.imageUrl && !story.imageUrl));
     const merged = {
       ...(better ? story : current),
       sources,
@@ -166,10 +168,19 @@ export async function collectFlashes(
   }
   const winners: FlashStory[] = [];
   for (const list of rankedByBot.values()) {
-    list.sort((a, b) => b.score - a.score);
+    // Prefer stories that already have cover art (publisher RSS) over Google News wrappers.
+    list.sort((a, b) => {
+      const img = Number(Boolean(b.imageUrl)) - Number(Boolean(a.imageUrl));
+      if (img) return img;
+      return b.score - a.score;
+    });
     winners.push(...list.slice(0, PER_BOT));
   }
-  winners.sort((a, b) => b.score - a.score);
+  winners.sort((a, b) => {
+    const img = Number(Boolean(b.imageUrl)) - Number(Boolean(a.imageUrl));
+    if (img) return img;
+    return b.score - a.score;
+  });
 
   const enriched = await enrichStories(winners);
   stats.posted = enriched.length;

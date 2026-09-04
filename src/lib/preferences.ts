@@ -444,7 +444,10 @@ export function feedsForPref(botId: BotId, pref: BotPref, fallback: string[]): s
     .slice(0, 8)
     .map((word) => (word.includes(" ") ? `"${word}"` : word))
     .join(" OR ")} when:1d`;
-  return [googleNewsSearch(query), ...fallback.slice(0, 1)];
+  // Publisher feeds first — they usually include images. Google News is coverage only.
+  const publishers = fallback.filter((url) => !url.includes("news.google."));
+  const googleFallback = fallback.filter((url) => url.includes("news.google."));
+  return [...publishers, googleNewsSearch(query), ...googleFallback].slice(0, 4);
 }
 
 export function sectionVisible(section: PrefSection, pref: BotPref) {

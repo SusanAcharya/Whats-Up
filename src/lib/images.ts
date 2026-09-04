@@ -49,6 +49,10 @@ export function estimateImageWidth(url: string): number {
       parsed.searchParams.get("maxwidth");
     if (q && /^\d+$/.test(q)) return Number(q);
 
+    // Google CDN: ...=w16 / =s0-w100-h100-c (source logos, not article art)
+    const googleW = parsed.href.match(/=(?:s0-)?w(\d{1,4})(?:-h\d+)?(?:-c)?(?:$|\?)/i);
+    if (googleW) return Number(googleW[1]);
+
     const path = parsed.pathname.toLowerCase();
     const bbc = path.match(/\/news\/(\d{2,4})\//);
     if (bbc) return Number(bbc[1]);
@@ -99,6 +103,14 @@ export function upgradeImageUrl(url: string): string {
       }
     }
 
+    // Google usercontent size token in the path (...=w100 → =w1200)
+    if (
+      (host.includes("googleusercontent.com") || host.includes("ggpht.com")) &&
+      /=w\d{1,4}(?:$|\?)/i.test(parsed.href)
+    ) {
+      return parsed.href.replace(/=w\d{1,4}(?=$|\?)/i, "=w1200");
+    }
+
     // Common thumb path segments
     parsed.pathname = parsed.pathname
       .replace(/\/thumbnails?\//i, "/")
@@ -115,9 +127,27 @@ export function upgradeImageUrl(url: string): string {
   }
 }
 
+/** Tiny Google source logos / favicons are not usable Flash covers. */
+function isUselessCoverImage(url: string) {
+  const width = estimateImageWidth(url);
+  if (width > 0 && width < 200) return true;
+  try {
+    const host = new URL(url).hostname;
+    if (
+      (host.includes("googleusercontent.com") || host.includes("ggpht.com")) &&
+      /=s0-w\d+/i.test(url)
+    ) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 export function pickBestImage(urls: Array<string | undefined | null>): string | undefined {
   const cleaned = urls
-    .filter((url): url is string => Boolean(url && looksLikeImage(url)))
+    .filter((url): url is string => Boolean(url && looksLikeImage(url) && !isUselessCoverImage(url)))
     .map((url) => upgradeImageUrl(url));
   if (cleaned.length === 0) return undefined;
   cleaned.sort((a, b) => estimateImageWidth(b) - estimateImageWidth(a));
@@ -231,38 +261,125 @@ function isGoogleNewsUrl(url: string) {
   }
 }
 
-async function resolveArticleUrl(url: string): Promise<string> {
-  if (!isGoogleNewsUrl(url)) return url;
+function googleNewsArticleId(url: string): string | undefined {
   try {
-    const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-      signal: AbortSignal.timeout(2500),
+    const path = new URL(url).pathname;
+    const match = path.match(/\/(?:rss\/)?articles\/([^/?#]+)/i);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/** `/rss/articles/` often 403s; the splash page is `/articles/`. */
+function googleNewsSplashUrl(articleId: string) {
+  return `https://news.google.com/articles/${articleId}`;
+}
+
+const googleNewsDecodeCache = new Map<string, string>();
+
+/**
+ * Post-2024 Google News wrappers no longer embed the publisher URL in base64.
+ * Fetch splash signature + timestamp, then call the Fbv4je batchexecute RPC.
+ */
+async function decodeGoogleNewsUrl(url: string): Promise<string | undefined> {
+  const articleId = googleNewsArticleId(url);
+  if (!articleId) return undefined;
+  const cached = googleNewsDecodeCache.get(articleId);
+  if (cached !== undefined) return cached || undefined;
+  try {
+    const page = await fetch(googleNewsSplashUrl(articleId), {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+        Referer: "https://news.google.com/",
+      },
+      signal: AbortSignal.timeout(5000),
       redirect: "follow",
     });
-    const finalUrl = response.url || url;
-    if (!isGoogleNewsUrl(finalUrl)) return finalUrl;
-    const html = (await response.text()).slice(0, 80_000);
-    const candidates = [
-      html.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*data-n-au/i)?.[1],
-      html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)?.[1],
-      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i)?.[1],
-      ...[...html.matchAll(/href=["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]),
-    ].filter(Boolean) as string[];
-    for (const href of candidates) {
-      try {
-        const host = new URL(href).hostname.replace(/^www\./, "");
-        if (host.includes("google.com") || host.includes("gstatic.com")) continue;
-        if (host.includes("googleusercontent.com") || host.includes("ggpht.com")) continue;
-        if (/\.(jpe?g|png|gif|webp|svg|ico)(\?|$)/i.test(new URL(href).pathname)) continue;
-        return href;
-      } catch {
-        /* ignore */
+    if (!page.ok) {
+      googleNewsDecodeCache.set(articleId, "");
+      return undefined;
+    }
+    const html = (await page.text()).slice(0, 200_000);
+    const signature = html.match(/data-n-a-sg=["']([^"']+)["']/i)?.[1];
+    const timestamp = html.match(/data-n-a-ts=["'](\d+)["']/i)?.[1];
+    if (!signature || !timestamp) {
+      googleNewsDecodeCache.set(articleId, "");
+      return undefined;
+    }
+
+    const rpcInner = JSON.stringify([
+      "garturlreq",
+      [
+        ["X", "X", ["X", "X"], null, null, 1, 1, "US:en", null, 1, null, null, null, null, null, 0, 1],
+        "X",
+        "X",
+        1,
+        [1, 1, 1],
+        1,
+        1,
+        null,
+        0,
+        0,
+        null,
+        0,
+      ],
+      articleId,
+      Number(timestamp),
+      signature,
+    ]);
+    const fReq = JSON.stringify([[["Fbv4je", rpcInner, null, "generic"]]]);
+    const body = new URLSearchParams({ "f.req": fReq });
+    const rpc = await fetch("https://news.google.com/_/DotsSplashUi/data/batchexecute", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "User-Agent": USER_AGENT,
+        Referer: "https://news.google.com/",
+      },
+      body,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!rpc.ok) {
+      googleNewsDecodeCache.set(articleId, "");
+      return undefined;
+    }
+    let text = await rpc.text();
+    if (text.startsWith(")]}'")) text = text.slice(4);
+    text = text.trim();
+    const firstNl = text.indexOf("\n");
+    if (firstNl > 0 && /^\d+$/.test(text.slice(0, firstNl).trim())) {
+      text = text.slice(firstNl + 1);
+    }
+    const envelopes = JSON.parse(text) as unknown[];
+    for (const env of envelopes) {
+      if (!Array.isArray(env) || env.length < 3) continue;
+      if (env[0] !== "wrb.fr" || env[1] !== "Fbv4je") continue;
+      const payload = JSON.parse(String(env[2])) as unknown;
+      if (
+        Array.isArray(payload) &&
+        payload[0] === "garturlres" &&
+        typeof payload[1] === "string" &&
+        /^https?:\/\//i.test(payload[1])
+      ) {
+        googleNewsDecodeCache.set(articleId, payload[1]);
+        return payload[1];
       }
     }
-    return finalUrl;
   } catch {
-    return url;
+    /* ignore */
   }
+  googleNewsDecodeCache.set(articleId, "");
+  return undefined;
+}
+
+async function resolveArticleUrl(url: string): Promise<string> {
+  if (!isGoogleNewsUrl(url)) return url;
+  const decoded = await decodeGoogleNewsUrl(url);
+  if (decoded && looksLikeArticleUrl(decoded)) return decoded;
+  return url;
 }
 
 function allMetaImages(html: string): string[] {
@@ -324,35 +441,40 @@ export async function fetchArticleMeta(
 export async function enrichStories<
   T extends { url: string; imageUrl?: string; excerpt?: string; snippet?: string },
 >(stories: T[]): Promise<T[]> {
-  return Promise.all(
-    stories.map(async (story) => {
-      const rssImage = story.imageUrl ? upgradeImageUrl(story.imageUrl) : undefined;
-      const hasCopy = Boolean(story.excerpt || story.snippet);
-      const needsMeta = !rssImage || isLikelyLowRes(rssImage) || !hasCopy;
-      if (!needsMeta) {
-        return { ...story, imageUrl: rssImage };
-      }
-      // Skip Google News wrapper pages — resolution is slow and often fails.
-      if (isGoogleNewsUrl(story.url) && rssImage && !isLikelyLowRes(rssImage) && hasCopy) {
-        return { ...story, imageUrl: rssImage };
-      }
-      const meta = await fetchArticleMeta(story.url);
-      const best = pickBestImage([meta.imageUrl, rssImage]);
-      const resolved =
-        meta.resolvedUrl &&
-        isGoogleNewsUrl(story.url) &&
-        looksLikeArticleUrl(meta.resolvedUrl) &&
-        !isGoogleNewsUrl(meta.resolvedUrl)
-          ? meta.resolvedUrl
-          : undefined;
-      return {
-        ...story,
-        imageUrl: best || rssImage || story.imageUrl,
-        excerpt: story.excerpt || meta.excerpt,
-        ...(resolved ? { url: resolved } : {}),
-      };
-    }),
-  );
+  const out: T[] = [];
+  // Serialize Google News resolution — parallel splash hits trip 429s quickly.
+  for (const story of stories) {
+    const rawImage = story.imageUrl;
+    const rssImage =
+      rawImage && !isUselessCoverImage(rawImage) ? upgradeImageUrl(rawImage) : undefined;
+    const usableRss = rssImage && !isUselessCoverImage(rssImage) ? rssImage : undefined;
+    const hasCopy = Boolean(story.excerpt || story.snippet);
+    const needsMeta = !usableRss || isLikelyLowRes(usableRss) || !hasCopy;
+    if (!needsMeta) {
+      out.push({ ...story, imageUrl: usableRss });
+      continue;
+    }
+    if (isGoogleNewsUrl(story.url) && usableRss && !isLikelyLowRes(usableRss) && hasCopy) {
+      out.push({ ...story, imageUrl: usableRss });
+      continue;
+    }
+    const meta = await fetchArticleMeta(story.url);
+    const best = pickBestImage([meta.imageUrl, usableRss]);
+    const resolved =
+      meta.resolvedUrl &&
+      isGoogleNewsUrl(story.url) &&
+      looksLikeArticleUrl(meta.resolvedUrl) &&
+      !isGoogleNewsUrl(meta.resolvedUrl)
+        ? meta.resolvedUrl
+        : undefined;
+    out.push({
+      ...story,
+      imageUrl: best || usableRss || story.imageUrl,
+      excerpt: story.excerpt || meta.excerpt,
+      ...(resolved ? { url: resolved } : {}),
+    });
+  }
+  return out;
 }
 
 function absolutize(maybeRelative: string, base: string) {

@@ -200,6 +200,8 @@ export const BOTS: Bot[] = [
     vibe: "You're popcorn. Only the real tea: huge releases, awards, chart-breakers, internet-breaking celebrity moments. No random dating rumors. Playful, not mean. Cite the actual news.",
     feeds: [
       "https://news.google.com/rss/headlines/section/topic/ENTERTAINMENT?hl=en-US&gl=US&ceid=US:en",
+      "https://www.hollywoodreporter.com/feed/",
+      "https://www.billboard.com/feed/",
     ],
     exclude: ["obituary: lesser", "coupon"],
     boost: [
