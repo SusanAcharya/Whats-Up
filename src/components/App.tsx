@@ -9,6 +9,7 @@ import { ChatList } from "./ChatList";
 import { ChatThread } from "./ChatThread";
 import { Onboarding } from "./Onboarding";
 import { SettingsScreen } from "./SettingsScreen";
+import { FlashDeck } from "./FlashDeck";
 import { SlideFromRight } from "./motion";
 import { AppLoadingSkeleton } from "./ui";
 
@@ -64,7 +65,9 @@ export function App() {
     ingesting,
   } = useStore();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"alerts" | "filters" | "bots">("alerts");
+  const [settingsTab, setSettingsTab] = useState<"alerts" | "topics" | "bots">("alerts");
+  const [flashOpen, setFlashOpen] = useState(false);
+  const [flashKey, setFlashKey] = useState(0);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [notifySaving, setNotifySaving] = useState(false);
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -133,7 +136,7 @@ export function App() {
 
   const statusText = ingestStatusText(lastIngestResult, ingesting);
 
-  function openSettings(tab: "alerts" | "filters" | "bots" = "alerts") {
+  function openSettings(tab: "alerts" | "topics" | "bots" = "alerts") {
     setSettingsTab(tab);
     setSettingsOpen(true);
   }
@@ -143,6 +146,10 @@ export function App() {
       <div className={`h-full min-h-0 ${selectedChatId ? "hidden md:block" : "block"}`}>
         <ChatList
           onOpenSettings={() => openSettings("alerts")}
+          onOpenFlash={() => {
+            setFlashKey((key) => key + 1);
+            setFlashOpen(true);
+          }}
           statusText={statusText}
           onDismissStatus={dismissIngestBanner}
         />
@@ -204,6 +211,15 @@ export function App() {
           } finally {
             setNotifySaving(false);
           }
+        }}
+      />
+      <FlashDeck
+        key={flashKey}
+        open={flashOpen}
+        onClose={() => setFlashOpen(false)}
+        onOpenTopics={() => {
+          setFlashOpen(false);
+          openSettings("topics");
         }}
       />
       {showInstall ? (

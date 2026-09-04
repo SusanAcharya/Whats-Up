@@ -94,7 +94,7 @@ export function SegmentedControl<T extends string>({
   active,
   onChange,
 }: {
-  tabs: { id: T; label: string }[];
+  tabs: { id: T; label: ReactNode }[];
   active: T;
   onChange: (id: T) => void;
 }) {

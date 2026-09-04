@@ -10,7 +10,7 @@ import type { BotId, ChatMessage } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ExpandHeight, MessageEnter, spring, springSoft } from "./motion";
 import { MessageListSkeleton } from "./ui";
-import { IconBack, IconRefresh, IconSend, IconSettings, IconShare } from "./icons";
+import { IconBack, IconHash, IconRefresh, IconSend, IconShare } from "./icons";
 
 const CHAT_CLUSTER_MS = 90_000;
 
@@ -104,7 +104,7 @@ const QUICK_REPLIES = ["Why does this matter?", "Explain simply", "What happens 
 export function ChatThread({
   onOpenSettings,
 }: {
-  onOpenSettings: (tab?: "alerts" | "filters" | "bots") => void;
+  onOpenSettings: (tab?: "alerts" | "topics" | "bots") => void;
 }) {
   const {
     chats,
@@ -168,8 +168,8 @@ export function ChatThread({
                 : bot?.handle}
           </p>
         </div>
-        <button type="button" onClick={() => onOpenSettings("filters")} className="btn-icon" aria-label="Settings">
-          <IconSettings className="h-[18px] w-[18px]" />
+        <button type="button" onClick={() => onOpenSettings("topics")} className="btn-icon" aria-label="Topics">
+          <IconHash className="h-[18px] w-[18px]" />
         </button>
         <button type="button" onClick={() => ingest("manual")} className="btn-icon" aria-label="Refresh">
           <IconRefresh className={`h-[18px] w-[18px] ${ingesting ? "animate-spin" : ""}`} />
@@ -196,7 +196,7 @@ export function ChatThread({
             memberBots={memberBots}
             ingesting={ingesting}
             onRefresh={() => ingest("manual")}
-            onSettings={() => onOpenSettings("filters")}
+            onSettings={() => onOpenSettings("topics")}
           />
         ) : null}
 
@@ -344,7 +344,7 @@ function EmptyState({
             {ingesting ? "Checking…" : "Check now"}
           </button>
           <button type="button" onClick={onSettings} className="btn-secondary w-auto px-4">
-            Broaden filters
+            Broaden topics
           </button>
         </div>
       ) : (

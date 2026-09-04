@@ -69,10 +69,10 @@ export function Onboarding() {
         ) : step === 2 ? (
           <>
             <ScreenTitle>
-              <span className="mt-4 block">Set your filters</span>
+              <span className="mt-4 block">Pick your topics</span>
             </ScreenTitle>
             <MetaLabel>
-              <span className="mt-2 block">Sporty can be NBA, a league, a club. The others work the same way.</span>
+              <span className="mt-2 block">Sporty can be NBA, a league, a club. Add keywords any bot should watch.</span>
             </MetaLabel>
           </>
         ) : (
@@ -144,7 +144,7 @@ export function Onboarding() {
           </div>
           <OnboardingFooter>
             <PrimaryButton disabled={picked.length === 0} onClick={() => setStep(2)}>
-              Next · Set filters{picked.length > 0 ? ` (${picked.length})` : ""}
+              Next · Topics{picked.length > 0 ? ` (${picked.length})` : ""}
             </PrimaryButton>
           </OnboardingFooter>
         </>

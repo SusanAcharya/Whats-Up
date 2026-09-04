@@ -10,6 +10,7 @@ import {
 } from "@/lib/preferences";
 import type { BotId, BotPref, Preferences } from "@/lib/types";
 import { BotMark } from "./BotMark";
+import { IconHash } from "./icons";
 
 function Chip({
   on,
@@ -35,12 +36,14 @@ function Chip({
   );
 }
 
-function CustomAdd({
+function KeywordComposer({
   onAdd,
-  label,
+  placeholder,
+  accent,
 }: {
   onAdd: (value: string) => void;
-  label: string;
+  placeholder: string;
+  accent?: string;
 }) {
   const [text, setText] = useState("");
 
@@ -52,7 +55,13 @@ function CustomAdd({
   }
 
   return (
-    <div className="mt-2 flex gap-2">
+    <div
+      className="flex gap-2 rounded-[var(--radius-md)] border bg-[var(--elevated)] p-1.5"
+      style={{ borderColor: accent ? `${accent}55` : "var(--hairline)" }}
+    >
+      <span className="grid h-11 w-10 place-items-center text-[var(--ink-faint)]" aria-hidden>
+        <IconHash className="h-4 w-4" />
+      </span>
       <input
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -62,17 +71,16 @@ function CustomAdd({
             submit();
           }
         }}
-        placeholder="add your own"
-        aria-label={label}
-        className="h-11 min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-3 text-[16px] outline-none placeholder:text-[var(--ink-faint)]"
+        placeholder={placeholder}
+        className="h-11 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-[var(--ink-faint)]"
       />
       <button
         type="button"
         onClick={submit}
         disabled={!text.trim()}
-        className="btn-secondary w-auto shrink-0 px-4 text-[13px]"
+        className="btn-secondary w-auto shrink-0 self-center px-4 text-[13px]"
       >
-        add
+        Save
       </button>
     </div>
   );
@@ -111,14 +119,25 @@ export function PreferencesEditor({
     update(botId, { ...pref, [key]: nextList });
   }
 
+  function addKeyword(botId: BotId, raw: string) {
+    const word = raw.trim().toLowerCase().slice(0, 40);
+    const pref = value[botId];
+    if (!word || (pref.keywords ?? []).includes(word)) return;
+    update(botId, {
+      ...pref,
+      keywords: [...(pref.keywords ?? []), word],
+    });
+  }
+
   return (
     <div className="grid gap-6 pb-4 pt-2">
       {configs.map((config) => {
         const bot = getBot(config.botId);
         const pref = value[config.botId];
+        const keywords = pref.keywords ?? [];
         return (
           <section key={config.botId} className="hairline-t pt-5 first:border-t-0 first:pt-0">
-            <div className="mb-3 flex items-start gap-2.5">
+            <div className="mb-4 flex items-start gap-2.5">
               <BotMark id={bot?.id} size="sm" />
               <div className="min-w-0">
                 <h3 className="text-[17px] font-semibold" style={{ color: bot?.color }}>
@@ -127,6 +146,37 @@ export function PreferencesEditor({
                 <p className="mt-0.5 text-[13px] leading-snug text-[var(--ink-muted)]">{config.blurb}</p>
               </div>
             </div>
+
+            <div className="mb-5 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--panel)] p-3.5">
+              <div className="mb-2 flex items-center gap-2">
+                <IconHash className="h-3.5 w-3.5 text-[var(--ink-faint)]" />
+                <p className="text-[13px] font-semibold text-[var(--ink)]">Your topics</p>
+              </div>
+              <p className="mb-3 text-[13px] leading-relaxed text-[var(--ink-muted)]">
+                Add words or phrases. {titleCaseName(bot?.name ?? "This bot")} will DM and post when
+                headlines hit them.
+              </p>
+              <KeywordComposer
+                accent={bot?.color}
+                placeholder={`e.g. nvidia, gaza, arsenal…`}
+                onAdd={(raw) => addKeyword(config.botId, raw)}
+              />
+              {keywords.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {keywords.map((word) => (
+                    <Chip
+                      key={word}
+                      on
+                      label={word}
+                      onClick={() => toggle(config.botId, "keywords", word)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-[12px] text-[var(--ink-faint)]">No custom topics yet.</p>
+              )}
+            </div>
+
             <div className="grid gap-4">
               {config.sections.map((section, index) => {
                 if (!sectionVisible(section, pref)) return null;
@@ -166,48 +216,23 @@ export function PreferencesEditor({
                         : null}
                     </div>
                     {section.allowCustom ? (
-                      <CustomAdd
-                        label={`add ${section.label.toLowerCase()} for ${bot?.name ?? config.botId}`}
-                        onAdd={(raw) => {
-                          const id = raw.toLowerCase().replace(/\s+/g, "-").slice(0, 40);
-                          if (!id || selected.includes(id)) return;
-                          update(config.botId, {
-                            ...pref,
-                            [section.key]: [...selected, id],
-                          });
-                        }}
-                      />
+                      <div className="mt-2">
+                        <KeywordComposer
+                          placeholder={`add custom ${section.label.toLowerCase()}`}
+                          onAdd={(raw) => {
+                            const id = raw.toLowerCase().replace(/\s+/g, "-").slice(0, 40);
+                            if (!id || selected.includes(id)) return;
+                            update(config.botId, {
+                              ...pref,
+                              [section.key]: [...selected, id],
+                            });
+                          }}
+                        />
+                      </div>
                     ) : null}
                   </div>
                 );
               })}
-              <div>
-                <p className="mb-2 text-[13px] font-medium text-[var(--ink-faint)]">Keywords</p>
-                <p className="mb-2 text-[13px] leading-relaxed text-[var(--ink-muted)]">
-                  Only stories that hit these words make the feed.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(pref.keywords ?? []).map((word) => (
-                    <Chip
-                      key={word}
-                      on
-                      label={word}
-                      onClick={() => toggle(config.botId, "keywords", word)}
-                    />
-                  ))}
-                </div>
-                <CustomAdd
-                  label={`add keyword for ${bot?.name ?? config.botId}`}
-                  onAdd={(raw) => {
-                    const word = raw.trim().toLowerCase().slice(0, 40);
-                    if (!word || (pref.keywords ?? []).includes(word)) return;
-                    update(config.botId, {
-                      ...pref,
-                      keywords: [...(pref.keywords ?? []), word],
-                    });
-                  }}
-                />
-              </div>
             </div>
           </section>
         );

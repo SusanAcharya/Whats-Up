@@ -36,6 +36,7 @@ Bot accent colors stay per-bot for avatars and news cards. UI chrome uses neutra
 - **List row**: 72px min-height, 48px avatar, 2-line preview, hairline separator inset from avatar
 - **Chat bubble**: 18px radius, clustered tails, inline timestamp
 - **News card**: Full-width inset card, optional hero image, title + summary hierarchy, source/read footer, share + ask actions
+- **Flash deck**: Full-screen vertical snap cards (doomscroll); one story per viewport; swipe up/next, down/previous
 - **Composer**: 44px min field, 36px send button, safe-area bottom padding
 - **Primary button**: Full-width 48px, white fill, black label, 12px radius
 - **Toggle**: 51x31px iOS-style switch

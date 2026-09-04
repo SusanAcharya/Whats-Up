@@ -375,4 +375,53 @@ a:focus-visible,
   .btn-primary:active:not(:disabled) {
     transform: none;
   }
+
+  .flash-deck {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Flash deck (doomscroll cards) ── */
+
+.flash-deck {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+}
+
+.flash-slide {
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  padding: calc(var(--safe-top) + 56px) 12px calc(var(--safe-bottom) + 36px);
+  box-sizing: border-box;
+}
+
+.flash-card {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--elevated);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.flash-card-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(10, 10, 12, 0.15) 0%, transparent 28%),
+    linear-gradient(180deg, transparent 35%, rgba(10, 10, 12, 0.92) 78%, #0a0a0c 100%);
+}
+
+.flash-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: var(--canvas);
+  border-top: 1px solid var(--hairline);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import { BOTS, getBot } from "@/lib/bots";
 import { TIMELINE_ACCENT } from "@/lib/design";
@@ -20,8 +20,9 @@ import {
   SheetHeader,
   Toggle,
 } from "./ui";
+import { IconBell, IconHash, IconPeople } from "./icons";
 
-type Tab = "alerts" | "filters" | "bots";
+type Tab = "alerts" | "topics" | "bots";
 
 export function SettingsScreen({
   open,
@@ -125,10 +126,34 @@ function SettingsPanel({
     }));
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "alerts", label: "Alerts" },
-    { id: "filters", label: "Filters" },
-    { id: "bots", label: "Bots" },
+  const tabs: { id: Tab; label: ReactNode }[] = [
+    {
+      id: "alerts",
+      label: (
+        <span className="inline-flex items-center gap-1.5">
+          <IconBell className="h-3.5 w-3.5" />
+          Alerts
+        </span>
+      ),
+    },
+    {
+      id: "topics",
+      label: (
+        <span className="inline-flex items-center gap-1.5">
+          <IconHash className="h-3.5 w-3.5" />
+          Topics
+        </span>
+      ),
+    },
+    {
+      id: "bots",
+      label: (
+        <span className="inline-flex items-center gap-1.5">
+          <IconPeople className="h-3.5 w-3.5" />
+          Bots
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -221,10 +246,11 @@ function SettingsPanel({
           </>
         ) : null}
 
-        {tab === "filters" ? (
+        {tab === "topics" ? (
           <>
             <p className="text-[15px] leading-relaxed text-[var(--ink-muted)]">
-              Each bot only posts stories that match your keywords. Add a team, ticker, or country, then save.
+              Add topics or keywords per bot. Saved words drive DMs and timeline posts — tap a chip
+              to remove it.
             </p>
             <PreferencesEditor value={prefsDraft} onChange={setPrefsDraft} botIds={prefBots} />
           </>
@@ -273,16 +299,16 @@ function SettingsPanel({
       <div className="app-footer hairline-t shrink-0 px-4 pt-3">
         {tab !== "bots" ? (
           <PrimaryButton
-            disabled={tab === "filters" ? prefsSaving : notifySaving}
+            disabled={tab === "topics" ? prefsSaving : notifySaving}
             onClick={async () => {
-              if (tab === "filters") await onSavePrefs(prefsDraft);
+              if (tab === "topics") await onSavePrefs(prefsDraft);
               else await onSaveNotifications(normalizeNotificationPrefs(notifyDraft));
             }}
           >
-            {tab === "filters"
+            {tab === "topics"
               ? prefsSaving
                 ? "Saving…"
-                : "Save filters"
+                : "Save topics"
               : notifySaving
                 ? "Saving…"
                 : "Save alerts"}

@@ -80,6 +80,7 @@ type StoreValue = {
   profile: UserProfile | null;
   chats: Chat[];
   messages: ChatMessage[];
+  flashNews: ChatMessage[];
   selectedChatId: string | null;
   ingesting: boolean;
   sending: boolean;
@@ -1200,6 +1201,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const messages = (selectedChatId ? (messageMap[selectedChatId] ?? []) : []).filter(
         (row) => stillMatches(row, profile?.preferences),
       );
+      const flashNews = (messageMap[GROUP_CHAT_ID] ?? [])
+        .filter((row) => row.kind === "news" && stillMatches(row, profile?.preferences))
+        .slice()
+        .sort((a, b) => b.createdAt - a.createdAt);
       return {
       ready,
       backend,
@@ -1207,6 +1212,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       profile,
       chats,
       messages,
+      flashNews,
       selectedChatId,
       ingesting,
       sending,

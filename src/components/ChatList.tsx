@@ -8,7 +8,7 @@ import type { Chat } from "@/lib/types";
 import { BotMark } from "./BotMark";
 import { ListRowEnter } from "./motion";
 import { MetaLabel, ScreenTitle, StatusBanner } from "./ui";
-import { IconRefresh, IconSettings } from "./icons";
+import { IconCards, IconRefresh, IconSettings } from "./icons";
 
 function timeLabel(ts: number) {
   const delta = Date.now() - ts;
@@ -78,10 +78,12 @@ function ChatRow({
 
 export function ChatList({
   onOpenSettings,
+  onOpenFlash,
   statusText,
   onDismissStatus,
 }: {
   onOpenSettings: () => void;
+  onOpenFlash: () => void;
   statusText?: string | null;
   onDismissStatus?: () => void;
 }) {
@@ -128,6 +130,14 @@ export function ChatList({
           <div className="flex shrink-0 gap-1.5 pt-0.5">
             <button
               type="button"
+              onClick={onOpenFlash}
+              className="btn-icon"
+              aria-label="Open flash cards"
+            >
+              <IconCards className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              type="button"
               onClick={() => ingest("manual")}
               className="btn-icon"
               aria-label="Refresh"
@@ -144,6 +154,25 @@ export function ChatList({
             </button>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={onOpenFlash}
+          className="mt-4 flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-[var(--hairline)] bg-[var(--elevated)] px-3.5 py-3 text-left transition active:scale-[0.99]"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-[var(--radius-sm)] bg-[var(--panel)] text-[var(--timeline)]">
+            <IconCards className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-[var(--ink)]">Flash</span>
+            <span className="block text-[13px] text-[var(--ink-faint)]">
+              Doomscroll the news as cards
+            </span>
+          </span>
+          <span className="text-[13px] text-[var(--ink-faint)]" aria-hidden>
+            →
+          </span>
+        </button>
 
         {statusText ? (
           <div className="mt-3">

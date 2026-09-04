@@ -108,3 +108,38 @@ export function IconShare({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function IconCards({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <rect
+        x="3.5"
+        y="6.5"
+        width="13"
+        height="14"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="2.2"
+      />
+      <path
+        d="M8 4.5h10.5A2 2 0 0 1 20.5 6.5v12"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconHash({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <path
+        d="M9 4.5 7.5 19.5M16.5 4.5 15 19.5M4.5 9.5h16M3.5 14.5h16"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
