@@ -24,6 +24,8 @@ import {
   onSnapshot,
   orderBy,
   query,
+  limit,
+  increment,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -428,16 +430,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (backend !== "firebase" || !uid || !db) return;
     const firestore = requireDb();
     const userId = uid;
+    const MESSAGE_LIMIT = 80;
     const listen = (chatId: string) =>
       onSnapshot(
         query(
           collection(firestore, "users", userId, "chats", chatId, "messages"),
-          orderBy("createdAt", "asc"),
+          orderBy("createdAt", "desc"),
+          limit(MESSAGE_LIMIT),
         ),
         (snap) => {
-          const rows = snap.docs.map((item) =>
-            messageFromDoc(chatId, item.id, item.data() as Record<string, unknown>),
-          );
+          const rows = snap.docs
+            .map((item) =>
+              messageFromDoc(chatId, item.id, item.data() as Record<string, unknown>),
+            )
+            .reverse();
           if (chatId === GROUP_CHAT_ID) {
             for (const row of rows) {
               if (row.kind === "news" && isBotId(row.sender)) {
@@ -840,7 +846,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         skippedDuplicate: 0,
       };
       try {
-        await pruneExpired();
+        // Don't block refresh on cleanup — prune in the background.
+        void pruneExpired();
         const seen = await loadSeen();
         const preferences = prunePreferences(
           normalizePreferences(prefs ?? profile?.preferences),
@@ -862,41 +869,110 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         };
         const apiStats = data.stats ?? emptyStats;
         const posted: IngestItem[] = [];
-        let skippedDuplicate = 0;
-        for (const item of data.items ?? []) {
+        const skipped: IngestItem[] = [];
+        const incoming = data.items ?? [];
+
+        for (const item of incoming) {
           if (
             item.botId !== "pitch" &&
             isDuplicateTitle(item.title, [...seen.titles, ...posted.map((row) => row.title)])
           ) {
-            await markSeen(item.url, item.botId, item.title);
-            skippedDuplicate += 1;
+            skipped.push(item);
             continue;
           }
-          await ensureDm(item.botId);
-          const news = {
-            sender: item.botId,
-            text: item.groupText,
-            kind: "news" as const,
-            articleUrl: item.url,
-            articleTitle: item.title,
-            imageUrl: item.imageUrl,
-            matchedKeywords: item.matchedKeywords,
-            sources: item.sources,
-            flash: item.flash,
-          };
-          await addMessage({
-            ...news,
-            chatId: GROUP_CHAT_ID,
-            bumpUnread: reason !== "open" || selectedRef.current !== GROUP_CHAT_ID,
-          });
-          await addMessage({
-            ...news,
-            chatId: dmChatId(item.botId),
-            bumpUnread: selectedRef.current !== dmChatId(item.botId),
-          });
-          lastNewsRef.current[item.botId] = { title: item.title, text: item.groupText };
           posted.push(item);
-          await markSeen(item.url, item.botId, item.title);
+        }
+
+        const botsNeeded = [...new Set(posted.map((item) => item.botId))];
+        await Promise.all(botsNeeded.map((botId) => ensureDm(botId)));
+
+        if (backend === "local") {
+          for (const item of posted) {
+            const news = {
+              sender: item.botId,
+              text: item.groupText,
+              kind: "news" as const,
+              articleUrl: item.url,
+              articleTitle: item.title,
+              imageUrl: item.imageUrl,
+              matchedKeywords: item.matchedKeywords,
+              sources: item.sources,
+              flash: item.flash,
+            };
+            await addMessage({
+              ...news,
+              chatId: GROUP_CHAT_ID,
+              bumpUnread: reason !== "open" || selectedRef.current !== GROUP_CHAT_ID,
+            });
+            await addMessage({
+              ...news,
+              chatId: dmChatId(item.botId),
+              bumpUnread: selectedRef.current !== dmChatId(item.botId),
+            });
+            await markSeen(item.url, item.botId, item.title);
+            lastNewsRef.current[item.botId] = { title: item.title, text: item.groupText };
+          }
+          for (const item of skipped) {
+            await markSeen(item.url, item.botId, item.title);
+          }
+        } else if (db && uid && (posted.length > 0 || skipped.length > 0)) {
+          const firestore = db;
+          const userId = uid;
+          const batch = writeBatch(firestore);
+          for (const item of posted) {
+            const payload = {
+              sender: item.botId,
+              text: item.groupText.slice(0, 4000),
+              kind: "news" as const,
+              articleUrl: item.url.slice(0, 2000),
+              articleTitle: item.title.slice(0, 300),
+              ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 2000) } : {}),
+              ...(item.matchedKeywords?.length
+                ? { matchedKeywords: item.matchedKeywords.slice(0, 12) }
+                : {}),
+              ...(item.sources?.length ? { sources: item.sources.slice(0, 8) } : {}),
+              ...(item.flash ? { flash: item.flash } : {}),
+              createdAt: serverTimestamp(),
+            };
+            const groupId = GROUP_CHAT_ID;
+            const dmId = dmChatId(item.botId);
+            batch.set(doc(collection(firestore, "users", userId, "chats", groupId, "messages")), payload);
+            batch.set(doc(collection(firestore, "users", userId, "chats", dmId, "messages")), payload);
+
+            const bumpGroup = reason !== "open" || selectedRef.current !== groupId;
+            const bumpDm = selectedRef.current !== dmId;
+            const groupUpdate: Record<string, unknown> = {
+              lastMessage: preview(item.groupText),
+              lastMessageAt: serverTimestamp(),
+            };
+            if (selectedRef.current === groupId) groupUpdate.unread = 0;
+            else if (bumpGroup) groupUpdate.unread = increment(1);
+            const dmUpdate: Record<string, unknown> = {
+              lastMessage: preview(item.groupText),
+              lastMessageAt: serverTimestamp(),
+            };
+            if (selectedRef.current === dmId) dmUpdate.unread = 0;
+            else if (bumpDm) dmUpdate.unread = increment(1);
+            batch.update(doc(firestore, "users", userId, "chats", groupId), groupUpdate);
+            batch.update(doc(firestore, "users", userId, "chats", dmId), dmUpdate);
+
+            batch.set(doc(firestore, "users", userId, "seen", seenId(item.url)), {
+              url: item.url,
+              botId: item.botId,
+              createdAt: serverTimestamp(),
+              title: item.title.slice(0, 300),
+            });
+            lastNewsRef.current[item.botId] = { title: item.title, text: item.groupText };
+          }
+          for (const item of skipped) {
+            batch.set(doc(firestore, "users", userId, "seen", seenId(item.url)), {
+              url: item.url,
+              botId: item.botId,
+              createdAt: serverTimestamp(),
+              title: item.title.slice(0, 300),
+            });
+          }
+          await batch.commit();
         }
         if (posted.length > 0 && profile?.pushEnabled && pushSubRef.current) {
           const sub = pushSubRef.current;
@@ -924,7 +1000,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           stats: {
             ...apiStats,
             posted: posted.length,
-            skippedDuplicate,
+            skippedDuplicate: skipped.length,
           },
           postedBotIds: posted.map((item) => item.botId),
         };
@@ -941,7 +1017,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setIngesting(false);
       }
     },
-    [addMessage, ensureDm, loadSeen, markSeen, profile, pruneExpired, touchLastIngest],
+    [addMessage, backend, ensureDm, loadSeen, markSeen, profile, pruneExpired, touchLastIngest],
   );
 
   const dismissIngestBanner = useCallback(() => {

@@ -174,12 +174,12 @@ async function resolveArticleUrl(url: string): Promise<string> {
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-      signal: AbortSignal.timeout(4500),
+      signal: AbortSignal.timeout(2500),
       redirect: "follow",
     });
     const finalUrl = response.url || url;
     if (!isGoogleNewsUrl(finalUrl)) return finalUrl;
-    const html = (await response.text()).slice(0, 120_000);
+    const html = (await response.text()).slice(0, 80_000);
     const candidates = [
       html.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*data-n-au/i)?.[1],
       html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)?.[1],
@@ -229,11 +229,11 @@ export async function fetchArticleMeta(
     const target = await resolveArticleUrl(url);
     const response = await fetch(target, {
       headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-      signal: AbortSignal.timeout(5500),
+      signal: AbortSignal.timeout(2800),
       redirect: "follow",
     });
     if (!response.ok) return { resolvedUrl: target };
-    const html = (await response.text()).slice(0, 160_000);
+    const html = (await response.text()).slice(0, 100_000);
     const base = response.url || target;
     const images = allMetaImages(html)
       .map((image) => absolutize(image, base))
@@ -254,16 +254,22 @@ export async function fetchArticleMeta(
 }
 
 /**
- * Always prefer article OG art over RSS thumbnails (RSS thumbs are often 150–240px).
+ * Prefer upgraded RSS art. Only hit article HTML when the thumb is still tiny
+ * or we have no excerpt/snippet for the summarizer.
  */
-export async function enrichStories<T extends { url: string; imageUrl?: string; excerpt?: string }>(
-  stories: T[],
-): Promise<T[]> {
+export async function enrichStories<
+  T extends { url: string; imageUrl?: string; excerpt?: string; snippet?: string },
+>(stories: T[]): Promise<T[]> {
   return Promise.all(
     stories.map(async (story) => {
       const rssImage = story.imageUrl ? upgradeImageUrl(story.imageUrl) : undefined;
-      const shouldFetchMeta = !rssImage || isLikelyLowRes(rssImage) || !story.excerpt;
-      if (!shouldFetchMeta) {
+      const hasCopy = Boolean(story.excerpt || story.snippet);
+      const needsMeta = !rssImage || isLikelyLowRes(rssImage) || !hasCopy;
+      if (!needsMeta) {
+        return { ...story, imageUrl: rssImage };
+      }
+      // Skip Google News wrapper pages — resolution is slow and often fails.
+      if (isGoogleNewsUrl(story.url) && rssImage && !isLikelyLowRes(rssImage) && hasCopy) {
         return { ...story, imageUrl: rssImage };
       }
       const meta = await fetchArticleMeta(story.url);

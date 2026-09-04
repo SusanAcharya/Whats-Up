@@ -5,15 +5,12 @@ import type { FlashStory } from "./pipeline";
 
 const GROQ_MODELS = [
   "groq/compound-mini",
-  "qwen/qwen3.8-27b",
   "openai/gpt-oss-20b",
 ];
 
 const OPENROUTER_MODELS = [
   "openrouter/free",
   "google/gemma-4-26b-a4b-it:free",
-  "google/gemma-4-31b-it:free",
-  "nvidia/nemotron-nano-9b-v2:free",
 ];
 
 type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
@@ -143,34 +140,6 @@ function plainHeadline(title: string) {
   return sentenceCase(trimSummary(out.join(" ").replace(/[?!.]+$/, ""), 150));
 }
 
-async function summarizeOneSimple(story: FlashStory): Promise<string | null> {
-  const system = `Explain news in plain English for a group chat.
-
-Write exactly 1-2 short sentences (under 200 characters total).
-- Say what happened in simple words.
-- Optional second sentence: why a normal person might care.
-- No jargon, no hype, no headline copy, no invented facts.
-- Proper sentence case.`;
-
-  try {
-    const raw = await complete(
-      [
-        { role: "system", content: system },
-        {
-          role: "user",
-          content: `TITLE: ${story.title}\nEXCERPT: ${story.excerpt || story.snippet || "(none)"}`,
-        },
-      ],
-      0.2,
-    );
-    const text = trimSummary(stripThink(raw).replace(/^["']|["']$/g, ""), 220);
-    if (!text || text.length < 20) return null;
-    return sentenceCase(text);
-  } catch {
-    return null;
-  }
-}
-
 function plainify(text: string) {
   return text
     .replace(/\([^)]{20,}\)/g, "")
@@ -298,29 +267,29 @@ Return JSON only:
     };
 
     const kept: IngestItem[] = [];
-    const usedBot = new Set<BotId>();
+    const usedByBot = new Map<BotId, number>();
+    const MAX_PER_BOT = 3;
     for (const row of parsed.items ?? []) {
       if (typeof row.index !== "number") continue;
       const story = stories[row.index];
-      if (!story || usedBot.has(story.botId) || row.keep === false) continue;
+      if (!story || row.keep === false) continue;
+      const count = usedByBot.get(story.botId) ?? 0;
+      if (count >= MAX_PER_BOT) continue;
       const item = toItem(story, row.groupText ?? "");
       if (!item) continue;
-      usedBot.add(story.botId);
+      usedByBot.set(story.botId, count + 1);
       kept.push(item);
     }
     if (kept.length > 0) return kept;
-    console.warn("summarize produced no usable text, trying simple per-story");
+    console.warn("summarize produced no usable text, using local fallback");
   } catch (error) {
     console.warn("curate fallback", error);
   }
 
-  const simple = await Promise.all(
-    stories.map(async (story) => {
-      const text = (await summarizeOneSimple(story)) ?? fallbackText(story);
-      return toItem(story, text, false);
-    }),
-  );
-  return simple.filter((item): item is IngestItem => Boolean(item)).slice(0, 4);
+  // Avoid N extra LLM round-trips on phone/serverless — local copy is fine.
+  return stories
+    .map((story) => toItem(story, fallbackText(story), false))
+    .filter((item): item is IngestItem => Boolean(item));
 }
 
 export async function botReply(input: {
